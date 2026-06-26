@@ -1,0 +1,6 @@
+{
+  "name": "Doce Sabor Financeiro",
+  "description": "Sistema completo de controle financeiro, ponto de venda (PDV), multi-inquilino e controle de estoque de produtos perecíveis para confeitarias e panificadoras.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

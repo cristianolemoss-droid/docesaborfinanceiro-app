@@ -1,0 +1,71 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,800;1,400&family=JetBrains+Mono:wght@400;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --color-rose-50: #fff1f2;
+  --color-rose-100: #ffe4e6;
+  --color-rose-200: #fecdd3;
+  --color-rose-300: #f43f5e;
+  --color-rose-450: #fb7185;
+  --color-rose-500: #ec4899; /* Bakery sweet pink */
+  --color-rose-600: #db2777;
+  --color-rose-700: #be185d;
+  
+  --color-candy-bg: #fff5f6;
+  --color-cream-card: #ffffff;
+}
+
+body {
+  background-color: var(--color-candy-bg);
+  background-image: radial-gradient(#ffe4e6 0.8px, transparent 0.8px), radial-gradient(#ffe4e6 0.8px, #fff5f6 0.8px);
+  background-size: 24px 24px;
+  background-position: 0 0, 12px 12px;
+  color: #374151;
+}
+
+/* Custom glow and animation helpers */
+.pastry-glow {
+  box-shadow: 0 4px 20px -2px rgba(236, 72, 153, 0.12);
+}
+
+.pastry-glow-hover:hover {
+  box-shadow: 0 8px 30px -2px rgba(236, 72, 153, 0.22);
+  transform: translateY(-2px);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dashed-pink-border {
+  border-style: dashed;
+  border-color: #fecdd3;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #fff5f6;
+}
+::-webkit-scrollbar-thumb {
+  background: #fecdd3;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #ec4899;
+}
+
+/* Sparkles animation */
+@keyframes cute-float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-5px) rotate(2deg); }
+}
+
+.cute-floating {
+  animation: cute-float 3s ease-in-out infinite;
+}
+
