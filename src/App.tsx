@@ -48,7 +48,7 @@ import {
   Package
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { isSupabaseConfigured, getSupabaseConfig } from './utils/supabaseClient';
+import { isSupabaseConfigured, getSupabaseConfig, getSupabaseCredentials, saveSupabaseCredentials } from './utils/supabaseClient';
 import { 
   downloadAllFromSupabase, 
   uploadAllToSupabase, 
@@ -100,6 +100,16 @@ export default function App() {
   const [isCopied, setIsCopied] = useState(false);
   const [syncStatusText, setSyncStatusText] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [tempSupabaseUrl, setTempSupabaseUrl] = useState('');
+  const [tempSupabaseAnonKey, setTempSupabaseAnonKey] = useState('');
+
+  useEffect(() => {
+    if (showSupabaseModal) {
+      const { url, anonKey } = getSupabaseCredentials();
+      setTempSupabaseUrl(url);
+      setTempSupabaseAnonKey(anonKey);
+    }
+  }, [showSupabaseModal]);
 
   // Load from Supabase (if available) or LocalStorage fallback
   useEffect(() => {
@@ -689,6 +699,68 @@ export default function App() {
                   <p className="text-xs text-slate-600 leading-relaxed font-mono text-[11px] bg-slate-100/50 p-2.5 rounded-xl border border-slate-200">
                     {supabaseLogs}
                   </p>
+                </div>
+              </div>
+
+              {/* Form de Configuração de Chaves */}
+              <div className="space-y-3 bg-stone-50/60 p-4 rounded-2xl border border-stone-200 shadow-3xs">
+                <h4 className="text-xs font-black uppercase text-slate-600 tracking-wider flex items-center gap-1.5">
+                  <Settings className="w-3.5 h-3.5 text-rose-500" />
+                  Conexão Direta ao Banco (Auto-Sincronismo)
+                </h4>
+                <p className="text-[11px] text-slate-500 leading-normal">
+                  Insira abaixo as credenciais de acesso ao seu cluster Supabase. Elas serão salvas automaticamente no seu navegador e não se perderão quando o app for reaberto.
+                </p>
+                <div className="grid grid-cols-1 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide mb-1">Project URL (Link do Projeto)</label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500 focus:border-rose-500 shadow-3xs"
+                      placeholder="https://xxxx.supabase.co"
+                      value={tempSupabaseUrl}
+                      onChange={(e) => setTempSupabaseUrl(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide mb-1">API Anon Public Key (Chave Anon)</label>
+                    <textarea
+                      rows={2}
+                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500 focus:border-rose-500 shadow-3xs resize-none"
+                      placeholder="eyJhbGci..."
+                      value={tempSupabaseAnonKey}
+                      onChange={(e) => setTempSupabaseAnonKey(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const DEFAULT_URL = 'https://xagcalqteqxgpbcatpai.supabase.co';
+                        const DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhhZ2NhbHF0ZXF4Z3BiY2F0cGFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1ODMzODUsImV4cCI6MjA5NzE1OTM4NX0.tw_YPRZCAeUXL-vUMJZB8q3us_h8D27h938IY3mmTdg';
+                        setTempSupabaseUrl(DEFAULT_URL);
+                        setTempSupabaseAnonKey(DEFAULT_ANON_KEY);
+                      }}
+                      className="text-[11px] text-stone-600 hover:text-rose-600 bg-white hover:bg-stone-100 border border-stone-300 py-1.5 px-3 rounded-xl font-bold transition-all cursor-pointer text-center"
+                    >
+                      Preencher Chaves de Acesso
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!tempSupabaseUrl.trim() || !tempSupabaseAnonKey.trim()) {
+                          alert("⚠️ Por favor, digite as chaves ou clique em Preencher Chaves de Acesso!");
+                          return;
+                        }
+                        saveSupabaseCredentials(tempSupabaseUrl, tempSupabaseAnonKey);
+                        alert("⚡ Credenciais salvas com sucesso no armazenamento do navegador! O sistema será recarregado automaticamente para ativar a conexão em nuvem.");
+                        window.location.reload();
+                      }}
+                      className="text-[11px] text-white bg-rose-500 hover:bg-rose-600 py-1.5 px-4 rounded-xl font-black transition-all cursor-pointer shadow-sm text-center active:scale-[0.98]"
+                    >
+                      Salvar Chaves e Reconectar ➔
+                    </button>
+                  </div>
                 </div>
               </div>
 
