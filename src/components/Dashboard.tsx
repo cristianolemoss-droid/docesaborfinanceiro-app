@@ -230,23 +230,25 @@ export default function Dashboard({
 
     inventory.forEach(item => {
       // 1. Verificação de validade para perecíveis
-      const days = getDaysRemaining(item.dataValidade);
-      if (days < 0) {
-        alerts.push({
-          id: `validade-vencida-${item.id}`,
-          nome: item.nome,
-          tipoAlert: 'vencido',
-          descricao: `VENCIDO em ${formatDateBR(item.dataValidade)} (${Math.abs(days)}d atrás)`,
-          nivel: 'critico'
-        });
-      } else if (days <= 3) {
-        alerts.push({
-          id: `validade-breve-${item.id}`,
-          nome: item.nome,
-          tipoAlert: 'vence_breve',
-          descricao: days === 0 ? 'Vence Hoje!' : `Vence em ${days} dia(s) (${formatDateBR(item.dataValidade)})`,
-          nivel: 'critico'
-        });
+      if (item.dataValidade) {
+        const days = getDaysRemaining(item.dataValidade);
+        if (days < 0) {
+          alerts.push({
+            id: `validade-vencida-${item.id}`,
+            nome: item.nome,
+            tipoAlert: 'vencido',
+            descricao: `VENCIDO em ${formatDateBR(item.dataValidade)} (${Math.abs(days)}d atrás)`,
+            nivel: 'critico'
+          });
+        } else if (days <= 3) {
+          alerts.push({
+            id: `validade-breve-${item.id}`,
+            nome: item.nome,
+            tipoAlert: 'vence_breve',
+            descricao: days === 0 ? 'Vence Hoje!' : `Vence em ${days} dia(s) (${formatDateBR(item.dataValidade)})`,
+            nivel: 'critico'
+          });
+        }
       }
 
       // 2. Verificação de estoque mínimo

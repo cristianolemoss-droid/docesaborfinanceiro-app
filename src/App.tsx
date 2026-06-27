@@ -17,6 +17,7 @@ import Estoque from './components/Estoque';
 import Financeiro from './components/Financeiro';
 import LockScreen from './components/LockScreen';
 import Configuracao from './components/Configuracao';
+import MultiTenantManager from './components/MultiTenantManager';
 import { 
   Cake, 
   LayoutDashboard, 
@@ -82,6 +83,7 @@ const INITIAL_USERS: UserAccount[] = [
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'pdv' | 'estoque' | 'financeiro' | 'configuracao'>('dashboard');
   const [userRole, setUserRole] = useState<'admin' | 'collaborator' | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
 
   // Core State
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -125,11 +127,24 @@ export default function App() {
 
       // Load user accounts list
       const cachedUsers = localStorage.getItem('bakery_users');
+      let activeUsers = INITIAL_USERS;
       if (cachedUsers) {
-        setUsers(JSON.parse(cachedUsers));
+        activeUsers = JSON.parse(cachedUsers);
+        setUsers(activeUsers);
       } else {
         setUsers(INITIAL_USERS);
         localStorage.setItem('bakery_users', JSON.stringify(INITIAL_USERS));
+      }
+
+      // Restore logged-in session if available
+      const cachedLoggedUserId = localStorage.getItem('logged_user_id');
+      const cachedLoggedUserRole = localStorage.getItem('logged_user_role');
+      if (cachedLoggedUserId && cachedLoggedUserRole) {
+        setUserRole(cachedLoggedUserRole as any);
+        const found = activeUsers.find((u: any) => u.id === cachedLoggedUserId);
+        if (found) {
+          setCurrentUser(found);
+        }
       }
 
       const configured = isSupabaseConfigured();
@@ -206,13 +221,33 @@ export default function App() {
   // Derived active company
   const activeCompany = companies.find(c => c.ativo) || INITIAL_COMPANY;
 
+  // Handle login success and persist session
+  const handleLoginSuccess = (role: 'admin' | 'collaborator', user?: UserAccount) => {
+    setUserRole(role);
+    if (user) {
+      setCurrentUser(user);
+      localStorage.setItem('logged_user_id', user.id);
+      localStorage.setItem('logged_user_role', role);
+    }
+  };
+
   // Handle inventory updates elegantly with safe Supabase triggers
   const handleUpdateInventory = (updated: InventoryItem[]) => {
     setInventory(updated);
     if (isSupabaseConfigured() && supabaseConnected) {
-      syncAllInventoryItems(updated).catch(err => {
-        console.error('Erro de sincronização em tempo real de inventário:', err);
-      });
+      setSyncStatusText('Sincronizando com Supabase...');
+      syncAllInventoryItems(updated)
+        .then(success => {
+          if (success) {
+            setSyncStatusText(null);
+          } else {
+            setSyncStatusText('Erro: Falha ao sincronizar com Supabase.');
+          }
+        })
+        .catch(err => {
+          console.error('Erro de sincronização em tempo real de inventário:', err);
+          setSyncStatusText('Erro crítico de sincronização.');
+        });
     }
   };
 
@@ -442,7 +477,12 @@ export default function App() {
                   </span>
                 )}
                 <button
-                  onClick={() => setUserRole(null)}
+                  onClick={() => {
+                    setUserRole(null);
+                    setCurrentUser(null);
+                    localStorage.removeItem('logged_user_id');
+                    localStorage.removeItem('logged_user_role');
+                  }}
                   className="p-1 hover:bg-rose-100/90 hover:text-rose-900 rounded-lg transition-all ml-1 cursor-pointer pointer-events-auto"
                   title="Bloquear painel / Sair"
                   id="btn-role-logout"
@@ -550,7 +590,7 @@ export default function App() {
               ) : (
                 <LockScreen 
                   requiredRole="admin"
-                  onLogin={(lockedRole) => setUserRole(lockedRole)}
+                  onLogin={handleLoginSuccess}
                   onNavigateToPublic={() => setActiveTab('pdv')}
                   companyName={activeCompany.nomeFantasia}
                   users={users}
@@ -587,7 +627,7 @@ export default function App() {
                 lossRecords={lossRecords}
                 sales={sales}
                 users={users}
-                onLogin={(lockedRole) => setUserRole(lockedRole)}
+                onLogin={handleLoginSuccess}
               />
             )}
 
@@ -618,7 +658,7 @@ export default function App() {
               ) : (
                 <LockScreen 
                   requiredRole="admin"
-                  onLogin={(lockedRole) => setUserRole(lockedRole)}
+                  onLogin={handleLoginSuccess}
                   onNavigateToPublic={() => setActiveTab('pdv')}
                   companyName={activeCompany.nomeFantasia}
                   users={users}
@@ -856,6 +896,13 @@ export default function App() {
                   </div>
                 )}
               </div>
+
+              {/* Multi-Tenant Control Panel */}
+              <MultiTenantManager 
+                onAddUserLocal={handleAddUser} 
+                users={users} 
+                supabaseConnected={supabaseConnected} 
+              />
 
               {/* Guia de Configuração e Chaves */}
               <div className="space-y-3">

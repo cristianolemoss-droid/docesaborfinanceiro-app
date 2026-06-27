@@ -94,6 +94,7 @@ export interface UserAccount {
   nome: string;     // ex: Administrador, Maria Confeiteira
   senha: string;    // senha correspondente
   role: 'admin' | 'collaborator';
+  tenantId?: string; // ID do inquilino/cliente para suporte a multi-tenancy
 }
 
 

@@ -33,7 +33,7 @@ interface FinanceiroProps {
   lossRecords?: LossRecord[];
   sales?: Sale[];
   users?: UserAccount[];
-  onLogin?: (role: 'admin' | 'collaborator') => void;
+  onLogin?: (role: 'admin' | 'collaborator', user?: UserAccount) => void;
 }
 
 export default function Financeiro({ 
@@ -88,7 +88,7 @@ export default function Financeiro({
     }
 
     if (onLogin) {
-      onLogin(match.role);
+      onLogin(match.role, match);
       setShowLoginModal(false);
       setPassword('');
     }

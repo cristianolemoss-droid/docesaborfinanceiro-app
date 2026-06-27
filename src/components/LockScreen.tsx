@@ -6,7 +6,7 @@ import bgImage from '../assets/images/bakery_display_bg_1781612198209.jpg';
 
 interface LockScreenProps {
   requiredRole: 'admin' | 'any';
-  onLogin: (role: 'admin' | 'collaborator') => void;
+  onLogin: (role: 'admin' | 'collaborator', user?: UserAccount) => void;
   onNavigateToPublic: () => void;
   companyName?: string;
   users?: UserAccount[];
@@ -49,7 +49,7 @@ export default function LockScreen({ requiredRole, onLogin, onNavigateToPublic, 
         return;
       }
 
-      onLogin(match.role);
+      onLogin(match.role, match);
       return;
     }
 

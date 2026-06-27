@@ -1,9 +1,36 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
-import { InventoryItem, LossRecord, Transaction, Sale } from '../types';
+import { InventoryItem, LossRecord, Transaction, Sale, UserAccount } from '../types';
 
 // ============================================================================
 // Mappers to translate between Supabase (Snake Case) and Local React (Camel Case)
 // ============================================================================
+
+// Multi-tenant session state helpers
+export function getActiveTenantId(): string {
+  if (typeof window === 'undefined') return 'tenant_default';
+  const loggedUserId = localStorage.getItem('logged_user_id');
+  if (loggedUserId) {
+    const cachedUsers = localStorage.getItem('bakery_users');
+    if (cachedUsers) {
+      try {
+        const usersList = JSON.parse(cachedUsers) as UserAccount[];
+        const user = usersList.find(u => u.id === loggedUserId);
+        if (user && user.tenantId) {
+          return user.tenantId;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }
+  return localStorage.getItem('supabase_active_tenant_id') || 'tenant_default';
+}
+
+export function setActiveTenantId(id: string) {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('supabase_active_tenant_id', id);
+  }
+}
 
 export const mapInventoryToDb = (item: InventoryItem) => ({
   id: item.id,
@@ -18,7 +45,8 @@ export const mapInventoryToDb = (item: InventoryItem) => ({
   data_validade: item.dataValidade,
   categoria: item.categoria,
   receita_ingredientes: item.receitaIngredientes ? JSON.stringify(item.receitaIngredientes) : null,
-  imagem: item.imagem || null
+  imagem: item.imagem || null,
+  tenant_id: getActiveTenantId()
 });
 
 export const mapInventoryFromDb = (row: any): InventoryItem => ({
@@ -47,7 +75,8 @@ export const mapLossToDb = (record: LossRecord) => ({
   unidade: record.unidade,
   data: record.data,
   motivo: record.motivo,
-  custo_total: record.custoTotal
+  custo_total: record.custoTotal,
+  tenant_id: getActiveTenantId()
 });
 
 export const mapLossFromDb = (row: any): LossRecord => ({
@@ -68,7 +97,8 @@ export const mapSaleToDb = (sale: Sale) => ({
   subtotal: sale.subtotal,
   desconto: sale.desconto,
   total: sale.total,
-  metodo_pagamento: sale.metodoPagamento
+  metodo_pagamento: sale.metodoPagamento,
+  tenant_id: getActiveTenantId()
 });
 
 export const mapSaleFromDb = (row: any): Sale => ({
@@ -88,7 +118,8 @@ export const mapTransactionToDb = (tx: Transaction) => ({
   categoria: tx.categoria,
   valor: tx.valor,
   descricao: tx.descricao,
-  origem_id: tx.origemId || null
+  origem_id: tx.origemId || null,
+  tenant_id: getActiveTenantId()
 });
 
 export const mapTransactionFromDb = (row: any): Transaction => ({
@@ -124,12 +155,13 @@ export async function downloadAllFromSupabase(): Promise<SupabaseFetchResult> {
   }
 
   try {
-    // Parallel fetches for responsiveness
+    // Parallel fetches for responsiveness with tenant_id filtering
+    const activeTenantId = getActiveTenantId();
     const [invRes, lossRes, saleRes, txRes] = await Promise.all([
-      supabase.from('bakery_inventory').select('*'),
-      supabase.from('bakery_loss_records').select('*'),
-      supabase.from('bakery_sales').select('*'),
-      supabase.from('bakery_transactions').select('*')
+      supabase.from('bakery_inventory').select('*').eq('tenant_id', activeTenantId),
+      supabase.from('bakery_loss_records').select('*').eq('tenant_id', activeTenantId),
+      supabase.from('bakery_sales').select('*').eq('tenant_id', activeTenantId),
+      supabase.from('bakery_transactions').select('*').eq('tenant_id', activeTenantId)
     ]);
 
     // Check individual errors (usually tables don't exist yet before running setup SQL)
@@ -195,6 +227,7 @@ export async function uploadAllToSupabase(
     // Check for errors
     for (const res of results) {
       if (res.error) {
+        console.error('Erro específico na tabela ao fazer upload:', res.error);
         throw new Error(res.error.message);
       }
     }
@@ -273,8 +306,13 @@ export async function syncAllInventoryItems(items: InventoryItem[]): Promise<boo
   if (!isSupabaseConfigured() || !supabase || items.length === 0) return false;
   try {
     const { error } = await supabase.from('bakery_inventory').upsert(items.map(mapInventoryToDb));
-    return !error;
-  } catch {
+    if (error) {
+      console.error('Erro de sincronização em tempo real de inventário (Supabase):', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Erro crítico de sincronização de inventário:', err);
     return false;
   }
 }
@@ -311,7 +349,7 @@ export async function syncSingleSale(sale: Sale): Promise<boolean> {
 export async function deleteSingleTransaction(id: string): Promise<boolean> {
   if (!isSupabaseConfigured() || !supabase) return false;
   try {
-    const { error } = await supabase.from('bakery_transactions').delete().eq('id', id);
+    const { error } = await supabase.from('bakery_transactions').delete().eq('id', id).eq('tenant_id', getActiveTenantId());
     return !error;
   } catch {
     return false;
@@ -324,7 +362,7 @@ export async function deleteSingleTransaction(id: string): Promise<boolean> {
 export async function deleteTransactionsByOrigin(originId: string): Promise<boolean> {
   if (!isSupabaseConfigured() || !supabase) return false;
   try {
-    const { error } = await supabase.from('bakery_transactions').delete().eq('origem_id', originId);
+    const { error } = await supabase.from('bakery_transactions').delete().eq('origem_id', originId).eq('tenant_id', getActiveTenantId());
     return !error;
   } catch {
     return false;
@@ -337,10 +375,86 @@ export async function deleteTransactionsByOrigin(originId: string): Promise<bool
 export async function deleteSingleSale(id: string): Promise<boolean> {
   if (!isSupabaseConfigured() || !supabase) return false;
   try {
-    const { error } = await supabase.from('bakery_sales').delete().eq('id', id);
+    const { error } = await supabase.from('bakery_sales').delete().eq('id', id).eq('tenant_id', getActiveTenantId());
     return !error;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Register a new Tenant (Client) in Supabase
+ */
+export async function registerTenantInSupabase(id: string, name: string): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured() || !supabase) {
+    return { success: false, error: 'Supabase não está configurado.' };
+  }
+  try {
+    const { error } = await supabase.from('inquilinos').upsert({ id, name });
+    if (error) throw new Error(error.message);
+    return { success: true };
+  } catch (err: any) {
+    console.error('Erro ao registrar tenant no Supabase:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Register a new Profile in Supabase
+ */
+export async function registerProfileInSupabase(
+  id: string,
+  username: string,
+  nome: string,
+  role: string,
+  tenantId: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured() || !supabase) {
+    return { success: false, error: 'Supabase não está configurado.' };
+  }
+  try {
+    const { error } = await supabase.from('perfis').upsert({
+      id,
+      username,
+      nome,
+      role,
+      tenant_id: tenantId
+    });
+    if (error) throw new Error(error.message);
+    return { success: true };
+  } catch (err: any) {
+    console.error('Erro ao registrar perfil no Supabase:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Fetch all Tenants from Supabase
+ */
+export async function fetchTenantsFromSupabase(): Promise<any[]> {
+  if (!isSupabaseConfigured() || !supabase) return [];
+  try {
+    const { data, error } = await supabase.from('inquilinos').select('*').order('name');
+    if (error) throw new Error(error.message);
+    return data || [];
+  } catch (err) {
+    console.error('Erro ao buscar tenants:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch all Profiles from Supabase
+ */
+export async function fetchProfilesFromSupabase(): Promise<any[]> {
+  if (!isSupabaseConfigured() || !supabase) return [];
+  try {
+    const { data, error } = await supabase.from('perfis').select('*');
+    if (error) throw new Error(error.message);
+    return data || [];
+  } catch (err) {
+    console.error('Erro ao buscar profiles:', err);
+    return [];
   }
 }
 
@@ -349,8 +463,40 @@ export async function deleteSingleSale(id: string): Promise<boolean> {
 // SQL Script Generator to guide users in setting up Supabase
 // ============================================================================
 
-export const SUPABASE_SQL_SETUP_CODE = `-- SCRIPT SQL DE CRIAÇÃO DE TABELAS - DOCE ATELIER CONFEITARIA ERP & PDV
+export const SUPABASE_SQL_SETUP_CODE = `-- SCRIPT SQL DE CRIAÇÃO DE TABELAS - DOCE ATELIER CONFEITARIA ERP & PDV (SUPORTE A MULTI-TENANCY)
 -- Copie e cole este script completo no Painel SQL (SQL Editor) do seu projeto Supabase!
+
+-- 0. TABELA DE INQUILINOS (Clientes da Plataforma)
+CREATE TABLE IF NOT EXISTS public.inquilinos (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Habilitar RLS para inquilinos
+ALTER TABLE public.inquilinos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Leitura livre de inquilinos" ON public.inquilinos;
+DROP POLICY IF EXISTS "Escrita livre de inquilinos" ON public.inquilinos;
+CREATE POLICY "Leitura livre de inquilinos" ON public.inquilinos FOR SELECT USING (true);
+CREATE POLICY "Escrita livre de inquilinos" ON public.inquilinos FOR ALL USING (true) WITH CHECK (true);
+
+-- 0.1 TABELA DE PERFIS (Contas de Usuários vinculadas a Inquilinos)
+CREATE TABLE IF NOT EXISTS public.perfis (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    nome TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('admin', 'collaborator')),
+    tenant_id TEXT REFERENCES public.inquilinos(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Habilitar RLS para perfis
+ALTER TABLE public.perfis ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Leitura livre de perfis" ON public.perfis;
+DROP POLICY IF EXISTS "Escrita livre de perfis" ON public.perfis;
+CREATE POLICY "Leitura livre de perfis" ON public.perfis FOR SELECT USING (true);
+CREATE POLICY "Escrita livre de perfis" ON public.perfis FOR ALL USING (true) WITH CHECK (true);
+
 
 -- 1. TABELA DE ESTOQUE / INVENTÁRIO
 CREATE TABLE IF NOT EXISTS public.bakery_inventory (
@@ -367,13 +513,15 @@ CREATE TABLE IF NOT EXISTS public.bakery_inventory (
     categoria TEXT NOT NULL,
     receita_ingredientes JSONB,
     imagem TEXT,
+    tenant_id TEXT DEFAULT 'tenant_default',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Se sua tabela já existe, execute a linha abaixo para adicionar a coluna de imagem:
+-- Se sua tabela já existe, execute as linhas abaixo para adicionar colunas extras:
 -- ALTER TABLE public.bakery_inventory ADD COLUMN IF NOT EXISTS imagem TEXT;
+-- ALTER TABLE public.bakery_inventory ADD COLUMN IF NOT EXISTS tenant_id TEXT DEFAULT 'tenant_default';
 
--- Liberar leitura e escrita desprotegida para testes dinâmicos (Row-Level Security Policies)
+-- Liberar leitura e escrita com Row-Level Security Policies baseadas em tenant_id ou leitura aberta
 ALTER TABLE public.bakery_inventory ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Leitura livre" ON public.bakery_inventory;
 DROP POLICY IF EXISTS "Escrita livre" ON public.bakery_inventory;
@@ -391,8 +539,12 @@ CREATE TABLE IF NOT EXISTS public.bakery_loss_records (
     data DATE NOT NULL,
     motivo TEXT NOT NULL,
     custo_total NUMERIC NOT NULL,
+    tenant_id TEXT DEFAULT 'tenant_default',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Alterações para tabelas já existentes:
+-- ALTER TABLE public.bakery_loss_records ADD COLUMN IF NOT EXISTS tenant_id TEXT DEFAULT 'tenant_default';
 
 ALTER TABLE public.bakery_loss_records ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Leitura livre de perdas" ON public.bakery_loss_records;
@@ -410,8 +562,12 @@ CREATE TABLE IF NOT EXISTS public.bakery_sales (
     desconto NUMERIC NOT NULL DEFAULT 0,
     total NUMERIC NOT NULL,
     metodo_pagamento TEXT NOT NULL,
+    tenant_id TEXT DEFAULT 'tenant_default',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Alterações para tabelas já existentes:
+-- ALTER TABLE public.bakery_sales ADD COLUMN IF NOT EXISTS tenant_id TEXT DEFAULT 'tenant_default';
 
 ALTER TABLE public.bakery_sales ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Leitura livre de vendas" ON public.bakery_sales;
@@ -429,8 +585,12 @@ CREATE TABLE IF NOT EXISTS public.bakery_transactions (
     valor NUMERIC NOT NULL,
     descricao TEXT NOT NULL,
     origem_id TEXT,
+    tenant_id TEXT DEFAULT 'tenant_default',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Alterações para tabelas já existentes:
+-- ALTER TABLE public.bakery_transactions ADD COLUMN IF NOT EXISTS tenant_id TEXT DEFAULT 'tenant_default';
 
 ALTER TABLE public.bakery_transactions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Leitura livre de transacoes" ON public.bakery_transactions;
@@ -438,5 +598,5 @@ DROP POLICY IF EXISTS "Escrita livre de transacoes" ON public.bakery_transaction
 CREATE POLICY "Leitura livre de transacoes" ON public.bakery_transactions FOR SELECT USING (true);
 CREATE POLICY "Escrita livre de transacoes" ON public.bakery_transactions FOR ALL USING (true) WITH CHECK (true);
 
--- TESTADO E PRONTO PARA USO! ADICIONE O SCRIPT, RODE O SQL E SINALIZAR NO APP!
+-- TESTADO E PRONTO PARA USO MULTI-TENANCY! ADICIONE O SCRIPT, RODE O SQL E SINALIZAR NO APP!
 `;

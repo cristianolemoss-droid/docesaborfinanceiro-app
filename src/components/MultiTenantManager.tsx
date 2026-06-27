@@ -1,0 +1,430 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Building, 
+  UserPlus, 
+  Users, 
+  Key, 
+  Activity, 
+  AlertCircle, 
+  CheckCircle, 
+  Globe, 
+  Plus, 
+  ShieldAlert,
+  ArrowRight
+} from 'lucide-react';
+import { UserAccount } from '../types';
+import { 
+  registerTenantInSupabase, 
+  registerProfileInSupabase, 
+  fetchTenantsFromSupabase, 
+  fetchProfilesFromSupabase,
+  getActiveTenantId,
+  setActiveTenantId
+} from '../utils/supabaseDb';
+
+interface MultiTenantManagerProps {
+  onAddUserLocal: (user: UserAccount) => void;
+  users: UserAccount[];
+  supabaseConnected: boolean;
+}
+
+export default function MultiTenantManager({ onAddUserLocal, users, supabaseConnected }: MultiTenantManagerProps) {
+  // Lists
+  const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
+  const [profiles, setProfiles] = useState<any[]>([]);
+  
+  // Form states - Tenant (Cliente)
+  const [newTenantId, setNewTenantId] = useState('');
+  const [newTenantName, setNewTenantName] = useState('');
+  const [tenantStatus, setTenantStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Form states - Profile (Usuário)
+  const [newProfileNome, setNewProfileNome] = useState('');
+  const [newProfileUsername, setNewProfileUsername] = useState('');
+  const [newProfileSenha, setNewProfileSenha] = useState('');
+  const [newProfileRole, setNewProfileRole] = useState<'admin' | 'collaborator'>('collaborator');
+  const [newProfileTenantId, setNewProfileTenantId] = useState('');
+  const [profileStatus, setProfileStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Active session tenant
+  const [activeTenant, setActiveTenant] = useState('tenant_default');
+  const [loading, setLoading] = useState(false);
+
+  // Load Tenants and Profiles on mount or when connection status changes
+  const loadData = async () => {
+    if (!supabaseConnected) return;
+    setLoading(true);
+    try {
+      const tList = await fetchTenantsFromSupabase();
+      const pList = await fetchProfilesFromSupabase();
+      
+      setTenants(tList);
+      setProfiles(pList);
+
+      // Pre-select first tenant in form if available
+      if (tList.length > 0) {
+        setNewProfileTenantId(tList[0].id);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setActiveTenant(getActiveTenantId());
+    if (supabaseConnected) {
+      loadData();
+    }
+  }, [supabaseConnected]);
+
+  const handleSwitchTenant = (tenantId: string) => {
+    setActiveTenantId(tenantId);
+    setActiveTenant(tenantId);
+    // Reload page to apply changes in real-time or trigger app refresh
+    alert(`⚡ Inquilino ativo alterado para [${tenantId}]! O sistema agora operará sob esta partição do banco de dados.`);
+    window.location.reload();
+  };
+
+  const handleRegisterTenant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTenantStatus(null);
+
+    const cleanId = newTenantId.trim().toLowerCase().replace(/\s+/g, '_');
+    const cleanName = newTenantName.trim();
+
+    if (!cleanId || !cleanName) {
+      setTenantStatus({ type: 'error', message: 'Preencha todos os campos do Cliente/Inquilino.' });
+      return;
+    }
+
+    setLoading(true);
+    const res = await registerTenantInSupabase(cleanId, cleanName);
+    setLoading(false);
+
+    if (res.success) {
+      setTenantStatus({ type: 'success', message: `Cliente "${cleanName}" cadastrado com sucesso no Supabase!` });
+      setNewTenantId('');
+      setNewTenantName('');
+      loadData();
+    } else {
+      setTenantStatus({ type: 'error', message: `Erro ao cadastrar Cliente: ${res.error || 'Erro desconhecido'}` });
+    }
+  };
+
+  const handleRegisterProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileStatus(null);
+
+    const cleanNome = newProfileNome.trim();
+    const cleanUsername = newProfileUsername.trim().toLowerCase();
+    const cleanSenha = newProfileSenha.trim();
+
+    if (!cleanNome || !cleanUsername || !cleanSenha || !newProfileTenantId) {
+      setProfileStatus({ type: 'error', message: 'Preencha todos os campos do usuário.' });
+      return;
+    }
+
+    // Save locally first to allow lockscreen login
+    const localUser: UserAccount = {
+      id: 'usr_' + Math.random().toString(36).substr(2, 9),
+      nome: cleanNome,
+      username: cleanUsername,
+      senha: cleanSenha,
+      role: newProfileRole,
+      tenantId: newProfileTenantId
+    };
+
+    onAddUserLocal(localUser);
+
+    setLoading(true);
+    const res = await registerProfileInSupabase(
+      localUser.id,
+      cleanUsername,
+      cleanNome,
+      newProfileRole,
+      newProfileTenantId
+    );
+    setLoading(false);
+
+    if (res.success) {
+      setProfileStatus({ 
+        type: 'success', 
+        message: `Usuário "${cleanNome}" registrado no Supabase e vinculado ao inquilino com sucesso!` 
+      });
+      setNewProfileNome('');
+      setNewProfileUsername('');
+      setNewProfileSenha('');
+      loadData();
+    } else {
+      setProfileStatus({ type: 'error', message: `Erro ao criar perfil no Supabase: ${res.error || 'Erro desconhecido'}` });
+    }
+  };
+
+  return (
+    <div className="bg-white border border-rose-100 rounded-3xl p-5 space-y-6 shadow-xs font-sans" id="multi-tenant-manager-root">
+      <div className="flex items-center justify-between border-b border-rose-100 pb-3">
+        <div>
+          <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <Globe className="w-4 h-4 text-rose-500 animate-spin" style={{ animationDuration: '4s' }} />
+            Gerenciamento de Clientes (Multi-Tenancy SaaS)
+          </h4>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Cadastre novos clientes (inquilinos) e perfis para testar o isolamento de Row-Level Security (RLS) no Supabase.
+          </p>
+        </div>
+        <button 
+          onClick={loadData}
+          disabled={!supabaseConnected || loading}
+          className="text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg transition-all"
+        >
+          {loading ? 'Carregando...' : '🔄 Recarregar'}
+        </button>
+      </div>
+
+      {!supabaseConnected && (
+        <div className="p-3 bg-rose-50 rounded-2xl border border-rose-150 flex items-start gap-2 text-xs text-rose-700 animate-pulse">
+          <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">Supabase Desconectado ou Chaves Padrão</p>
+            <p className="text-[11px] mt-0.5 leading-relaxed">
+              O gerenciador multi-tenancy requer conexão ativa com o seu cluster Supabase. Preencha as chaves válidas e conecte para começar a registrar novos inquilinos.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Active Tenant Selector */}
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping"></span>
+            <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Inquilino Ativo na Sessão:</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-black text-rose-700">
+              {tenants.find(t => t.id === activeTenant)?.name || activeTenant}
+            </span>
+            <span className="text-xs font-mono bg-slate-200/60 text-slate-600 px-1.5 py-0.5 rounded-md font-bold">
+              ID: {activeTenant}
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-450 leading-relaxed">
+            As novas vendas, insumos, perdas e transações criadas neste navegador serão marcadas e isoladas com este <strong>tenant_id</strong>.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 w-full md:w-auto shrink-0">
+          <label className="text-xs font-bold text-slate-600 uppercase shrink-0">Mudar para:</label>
+          <select 
+            value={activeTenant}
+            onChange={(e) => handleSwitchTenant(e.target.value)}
+            className="bg-white border border-slate-300 rounded-xl px-2 py-1.5 font-bold text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500"
+          >
+            <option value="tenant_default">Padrão (tenant_default)</option>
+            {tenants.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.id})
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Register Tenant Form */}
+        <div className="space-y-3 bg-stone-50/50 p-4 rounded-2xl border border-stone-200">
+          <div className="flex items-center gap-2">
+            <Building className="w-4 h-4 text-amber-600" />
+            <h5 className="text-xs font-extrabold uppercase text-slate-700 tracking-wider">1. Cadastrar Novo Cliente (Tenant)</h5>
+          </div>
+          <p className="text-[10px] text-slate-500 leading-normal">
+            Cria uma nova organização independente no banco de dados.
+          </p>
+
+          <form onSubmit={handleRegisterTenant} className="space-y-3">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Identificador Único (ID do Cliente)</label>
+              <input 
+                type="text"
+                placeholder="Ex: padaria_doce_sonho"
+                value={newTenantId}
+                onChange={(e) => setNewTenantId(e.target.value)}
+                disabled={!supabaseConnected}
+                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-3xs"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Nome Fantasia / Razão</label>
+              <input 
+                type="text"
+                placeholder="Ex: Confeitaria Doce Sonho Ltda"
+                value={newTenantName}
+                onChange={(e) => setNewTenantName(e.target.value)}
+                disabled={!supabaseConnected}
+                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-3xs"
+              />
+            </div>
+
+            {tenantStatus && (
+              <div className={`p-2 rounded-xl text-xs flex items-start gap-1.5 border ${
+                tenantStatus.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-rose-50 border-rose-100 text-rose-800'
+              }`}>
+                {tenantStatus.type === 'success' ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" /> : <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />}
+                <span className="text-[10px]">{tenantStatus.message}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={!supabaseConnected || loading}
+              className="w-full bg-slate-800 hover:bg-slate-900 text-white text-[11px] font-bold py-1.5 rounded-xl transition-all shadow-3xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+            >
+              <Plus className="w-3.5 h-3.5" /> Cadastrar Cliente
+            </button>
+          </form>
+        </div>
+
+        {/* Register Profile Form */}
+        <div className="space-y-3 bg-stone-50/50 p-4 rounded-2xl border border-stone-200">
+          <div className="flex items-center gap-2">
+            <UserPlus className="w-4 h-4 text-emerald-600" />
+            <h5 className="text-xs font-extrabold uppercase text-slate-700 tracking-wider">2. Cadastrar Novo Usuário (Profile)</h5>
+          </div>
+          <p className="text-[10px] text-slate-500 leading-normal">
+            Cria uma nova conta de acesso associada a um de seus Clientes.
+          </p>
+
+          <form onSubmit={handleRegisterProfile} className="space-y-2.5">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-0.5">Nome Completo</label>
+                <input 
+                  type="text"
+                  placeholder="Ex: Carlos Mestre"
+                  value={newProfileNome}
+                  onChange={(e) => setNewProfileNome(e.target.value)}
+                  disabled={!supabaseConnected}
+                  className="w-full px-2 py-1 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-3xs"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-0.5">Username (Login)</label>
+                <input 
+                  type="text"
+                  placeholder="Ex: carlos"
+                  value={newProfileUsername}
+                  onChange={(e) => setNewProfileUsername(e.target.value)}
+                  disabled={!supabaseConnected}
+                  className="w-full px-2 py-1 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-3xs"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-0.5">Senha</label>
+                <input 
+                  type="password"
+                  placeholder="Senha"
+                  value={newProfileSenha}
+                  onChange={(e) => setNewProfileSenha(e.target.value)}
+                  disabled={!supabaseConnected}
+                  className="w-full px-2 py-1 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-3xs"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-0.5">Cargo / Perfil</label>
+                <select 
+                  value={newProfileRole}
+                  onChange={(e) => setNewProfileRole(e.target.value as any)}
+                  disabled={!supabaseConnected}
+                  className="w-full px-2 py-1 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-3xs"
+                >
+                  <option value="collaborator">Colaborador</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-0.5">Vincular ao Cliente (Tenant)</label>
+              <select 
+                value={newProfileTenantId}
+                onChange={(e) => setNewProfileTenantId(e.target.value)}
+                disabled={!supabaseConnected || tenants.length === 0}
+                className="w-full px-2 py-1 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-3xs"
+              >
+                {tenants.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.id})
+                  </option>
+                ))}
+                {tenants.length === 0 && <option value="">Sem clientes cadastrados ainda</option>}
+              </select>
+            </div>
+
+            {profileStatus && (
+              <div className={`p-2 rounded-xl text-xs flex items-start gap-1.5 border ${
+                profileStatus.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-rose-50 border-rose-100 text-rose-800'
+              }`}>
+                {profileStatus.type === 'success' ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" /> : <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />}
+                <span className="text-[10px]">{profileStatus.message}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={!supabaseConnected || loading || tenants.length === 0}
+              className="w-full bg-rose-500 hover:bg-rose-600 text-white text-[11px] font-bold py-1.5 rounded-xl transition-all shadow-3xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+            >
+              <UserPlus className="w-3.5 h-3.5" /> Criar Usuário & Vincular
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {/* Tenants list table */}
+      {supabaseConnected && tenants.length > 0 && (
+        <div className="space-y-2 pt-1 border-t border-rose-100">
+          <h5 className="text-[11px] font-extrabold uppercase text-slate-450 tracking-wider flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5 text-slate-500" />
+            Clientes Cadastrados no Supabase ({tenants.length})
+          </h5>
+          <div className="overflow-x-auto rounded-xl border border-slate-150">
+            <table className="w-full text-left text-[11px] font-sans">
+              <thead className="bg-slate-100 text-slate-600 uppercase font-black tracking-wide border-b border-slate-200">
+                <tr>
+                  <th className="p-2">Identificador (ID)</th>
+                  <th className="p-2">Nome do Cliente</th>
+                  <th className="p-2 text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-150 bg-white text-slate-700">
+                {tenants.map(t => (
+                  <tr key={t.id} className={t.id === activeTenant ? 'bg-rose-50/35 font-bold text-rose-800' : ''}>
+                    <td className="p-2 font-mono">{t.id}</td>
+                    <td className="p-2">{t.name}</td>
+                    <td className="p-2 text-right">
+                      {t.id === activeTenant ? (
+                        <span className="text-[10px] text-rose-600 bg-rose-100/70 px-2 py-0.5 rounded-full border border-rose-200 font-extrabold uppercase">Ativo</span>
+                      ) : (
+                        <button
+                          onClick={() => handleSwitchTenant(t.id)}
+                          className="text-[10px] font-extrabold text-slate-600 hover:text-white bg-slate-200 hover:bg-rose-500 px-2 py-1 rounded-lg transition-all"
+                        >
+                          Ativar ➔
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

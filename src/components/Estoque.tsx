@@ -153,7 +153,12 @@ export default function Estoque({ inventory, onUpdateInventory, onAddLossRecord 
   // Adicionar novo item
   const handleAddItemSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newItem.nome || !newItem.quantidade || !newItem.custoUnitario || !newItem.dataValidade || !newItem.categoria) {
+    const isFinalProduct = newItem.tipo === 'produto_final';
+    const hasRequiredFields = isFinalProduct
+      ? (!!newItem.nome && !!newItem.custoUnitario && !!newItem.categoria && !!newItem.precoVenda)
+      : (!!newItem.nome && !!newItem.quantidade && !!newItem.custoUnitario && !!newItem.dataValidade && !!newItem.categoria);
+
+    if (!hasRequiredFields) {
       alert('Por favor, preencha todos os campos obrigatórios!');
       return;
     }
@@ -162,13 +167,13 @@ export default function Estoque({ inventory, onUpdateInventory, onAddLossRecord 
       id: 'item_' + Date.now().toString(),
       nome: newItem.nome,
       tipo: newItem.tipo,
-      quantidade: parseFloat(newItem.quantidade),
+      quantidade: parseFloat(newItem.quantidade || '0'),
       unidade: newItem.unidade,
-      custoUnitario: parseFloat(newItem.custoUnitario),
+      custoUnitario: parseFloat(newItem.custoUnitario || '0'),
       precoVenda: newItem.tipo === 'produto_final' ? parseFloat(newItem.precoVenda || '0') : undefined,
       estoqueMinimo: parseFloat(newItem.estoqueMinimo || '0'),
       dataFabricacao: newItem.dataFabricacao || undefined,
-      dataValidade: newItem.dataValidade,
+      dataValidade: newItem.dataValidade || '',
       categoria: newItem.categoria,
       imagem: newItem.imagem || undefined
     };
@@ -227,7 +232,12 @@ export default function Estoque({ inventory, onUpdateInventory, onAddLossRecord 
   const handleEditItemSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedItemForEdit) return;
-    if (!editItem.nome || !editItem.quantidade || !editItem.custoUnitario || !editItem.dataValidade || !editItem.categoria) {
+    const isFinalProduct = editItem.tipo === 'produto_final';
+    const hasRequiredFields = isFinalProduct
+      ? (!!editItem.nome && !!editItem.custoUnitario && !!editItem.categoria && !!editItem.precoVenda)
+      : (!!editItem.nome && !!editItem.quantidade && !!editItem.custoUnitario && !!editItem.dataValidade && !!editItem.categoria);
+
+    if (!hasRequiredFields) {
       alert('Por favor, preencha todos os campos obrigatórios!');
       return;
     }
@@ -244,7 +254,7 @@ export default function Estoque({ inventory, onUpdateInventory, onAddLossRecord 
           precoVenda: editItem.tipo === 'produto_final' ? parseFloat(editItem.precoVenda || '0') : undefined,
           estoqueMinimo: parseFloat(editItem.estoqueMinimo || '0'),
           dataFabricacao: editItem.dataFabricacao || undefined,
-          dataValidade: editItem.dataValidade,
+          dataValidade: editItem.dataValidade || '',
           categoria: editItem.categoria,
           imagem: editItem.imagem || undefined
         };
@@ -675,13 +685,15 @@ export default function Estoque({ inventory, onUpdateInventory, onAddLossRecord 
 
                   {/* Quantidade */}
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-700">Quantidade Inicial (Obrigatório)</label>
+                    <label className="font-bold text-slate-700">
+                      Quantidade Inicial {newItem.tipo !== 'produto_final' && '(Obrigatório)'}
+                    </label>
                     <input 
                       id="inp-add-quantidade"
                       type="number" 
                       step="0.01"
                       placeholder="Ex: 5"
-                      required
+                      required={newItem.tipo !== 'produto_final'}
                       className="w-full bg-slate-50 border border-slate-200 py-2 px-3 rounded-xl text-slate-800 focus:outline-hidden focus:bg-white"
                       value={newItem.quantidade}
                       onChange={e => setNewItem({ ...newItem, quantidade: e.target.value })}
@@ -765,12 +777,16 @@ export default function Estoque({ inventory, onUpdateInventory, onAddLossRecord 
 
                   {/* Data de Validade */}
                   <div className="space-y-1">
-                    <label className="font-bold text-red-500">Data de Validade Final (Obrigatório)</label>
+                    <label className={newItem.tipo === 'produto_final' ? "font-bold text-slate-700" : "font-bold text-red-500"}>
+                      Data de Validade Final {newItem.tipo !== 'produto_final' && '(Obrigatório)'}
+                    </label>
                     <input 
                       id="inp-add-data-val"
                       type="date" 
-                      required
-                      className="w-full bg-red-50/20 border border-red-250 py-2 px-3 rounded-xl text-slate-800 focus:outline-hidden focus:bg-white font-mono"
+                      required={newItem.tipo !== 'produto_final'}
+                      className={`w-full py-2 px-3 rounded-xl text-slate-800 focus:outline-hidden focus:bg-white font-mono ${
+                        newItem.tipo === 'produto_final' ? "bg-slate-50 border border-slate-200" : "bg-red-50/20 border border-red-250"
+                      }`}
                       value={newItem.dataValidade}
                       onChange={e => setNewItem({ ...newItem, dataValidade: e.target.value })}
                     />
@@ -1104,14 +1120,16 @@ export default function Estoque({ inventory, onUpdateInventory, onAddLossRecord 
 
                   {/* Quantidade */}
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-700">Quantidade Atual no Estoque</label>
+                    <label className="font-bold text-slate-700">
+                      Quantidade Atual no Estoque {editItem.tipo !== 'produto_final' && '(Obrigatório)'}
+                    </label>
                     <div className="flex gap-2">
                       <input 
                         id="inp-edit-quantidade"
                         type="number" 
                         step="0.01"
                         placeholder="Ex: 10"
-                        required
+                        required={editItem.tipo !== 'produto_final'}
                         className="w-full bg-slate-50 border border-slate-200 py-2.5 px-3 rounded-lg font-mono text-slate-950"
                         value={editItem.quantidade}
                         onChange={e => setEditItem({ ...editItem, quantidade: e.target.value })}
@@ -1192,11 +1210,13 @@ export default function Estoque({ inventory, onUpdateInventory, onAddLossRecord 
                   </div>
 
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-700">Data de Validade (Obrigatório)</label>
+                    <label className="font-bold text-slate-700">
+                      Data de Validade {editItem.tipo !== 'produto_final' && '(Obrigatório)'}
+                    </label>
                     <input 
                       id="inp-edit-dataValidade"
                       type="date" 
-                      required
+                      required={editItem.tipo !== 'produto_final'}
                       className="w-full bg-slate-50 border border-slate-200 py-2.5 px-3 rounded-lg font-mono text-slate-950"
                       value={editItem.dataValidade}
                       onChange={e => setEditItem({ ...editItem, dataValidade: e.target.value })}

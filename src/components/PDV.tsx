@@ -767,53 +767,244 @@ export default function PDV({
                           </span>
                         </div>
 
-                        {/* Desenho Interativo de Mesa Física Detalhada com Prato e Cadeiras */}
-                        <div className="relative w-20 h-20 mx-auto my-3 flex items-center justify-center">
-                          {/* Cadeiras com estofado realista ao redor do tampo */}
-                          <span className={`absolute -top-1 w-6 h-2 rounded-t-md border transition-all ${
-                            isOccupied 
-                              ? 'bg-amber-600 border-amber-750 shadow-3xs' 
-                              : 'bg-stone-200 border-stone-300'
-                          }`}></span>
-                          <span className={`absolute -bottom-1 w-6 h-2 rounded-b-md border transition-all ${
-                            isOccupied 
-                              ? 'bg-amber-650 border-amber-750 shadow-3xs' 
-                              : 'bg-stone-200 border-stone-300'
-                          }`}></span>
-                          <span className={`absolute -left-1 w-2 h-6 rounded-l-md border transition-all ${
-                            isOccupied 
-                              ? 'bg-amber-600 border-amber-750 shadow-3xs' 
-                              : 'bg-stone-200 border-stone-300'
-                          }`}></span>
-                          <span className={`absolute -right-1 w-2 h-6 rounded-r-md border transition-all ${
-                            isOccupied 
-                              ? 'bg-amber-650 border-amber-750 shadow-3xs' 
-                              : 'bg-stone-200 border-stone-300'
-                          }`}></span>
-                          
-                          {/* O tampo de mesa redondo em relevo com prato e guardanapo */}
-                          <div className={`w-14 h-14 rounded-full border-2 shadow-sm flex flex-col items-center justify-center transition-all ${
-                            isOccupied
-                              ? 'bg-gradient-to-br from-amber-50 to-amber-100 border-amber-500 scale-105'
-                              : 'bg-gradient-to-br from-stone-50 to-stone-100/50 border-stone-300'
-                          }`}>
-                            {/* Desenho do Prato */}
-                            <div className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all ${
-                              isOccupied ? 'border-amber-200/80 bg-white shadow-3xs' : 'border-stone-200 bg-white/40'
-                            }`}>
-                              {/* Talheres / Copinho ou Número no centro do prato */}
-                              <span className={`font-black text-xs ${
-                                isOccupied ? 'text-amber-700' : 'text-stone-500'
-                              }`}>
+                        {/* Desenho Interativo de Mesa Física Detalhada (Mesa de Jantar em Planta / Top-down) */}
+                        <div className="relative w-24 h-24 mx-auto my-1 flex items-center justify-center">
+                          <svg viewBox="0 0 100 100" className="w-full h-full transition-all duration-300">
+                            {/* Definições de Gradientes para o visual premium de madeira */}
+                            <defs>
+                              {/* Gradiente de Madeira para Mesa Ativa/Ocupada */}
+                              <linearGradient id={`woodGradActive-${num}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stopColor="#b47b59" />
+                                <stop offset="50%" stopColor="#a36a46" />
+                                <stop offset="100%" stopColor="#8d5633" />
+                              </linearGradient>
+                              {/* Gradiente de Madeira para Mesa Livre */}
+                              <linearGradient id={`woodGradFree-${num}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stopColor="#d4ceb8" />
+                                <stop offset="50%" stopColor="#bfae9c" />
+                                <stop offset="100%" stopColor="#9a8c7a" />
+                              </linearGradient>
+                            </defs>
+
+                            {/* CADEIRAS AO REDOR DA MESA */}
+                            {/* Cadeira de Cima (Top Chair) */}
+                            <g className="transition-all duration-300">
+                              {/* Encosto de madeira curvo */}
+                              <path 
+                                d="M 36 18 Q 50 8 64 18" 
+                                fill="none" 
+                                stroke={isOccupied ? "#7c4524" : "#7c7264"} 
+                                strokeWidth="3" 
+                                strokeLinecap="round" 
+                              />
+                              {/* Detalhe interno de palha/trama */}
+                              <path 
+                                d="M 40 18 Q 50 12 60 18" 
+                                fill="none" 
+                                stroke={isOccupied ? "#996342" : "#9b8e81"} 
+                                strokeWidth="1" 
+                                strokeDasharray="1.5,1.5" 
+                              />
+                              {/* Estofado/Almofada da cadeira (Branco/Cream) */}
+                              <path 
+                                d="M 38 18 C 38 24, 42 27, 50 27 C 58 27, 62 24, 62 18 Z" 
+                                fill={isOccupied ? "#ffffff" : "#f1ede2"} 
+                                stroke={isOccupied ? "#925936" : "#8d8174"} 
+                                strokeWidth="1.5" 
+                              />
+                            </g>
+
+                            {/* Cadeira de Baixo (Bottom Chair) */}
+                            <g className="transition-all duration-300">
+                              {/* Encosto de madeira curvo */}
+                              <path 
+                                d="M 36 82 Q 50 92 64 82" 
+                                fill="none" 
+                                stroke={isOccupied ? "#7c4524" : "#7c7264"} 
+                                strokeWidth="3" 
+                                strokeLinecap="round" 
+                              />
+                              {/* Detalhe interno */}
+                              <path 
+                                d="M 40 82 Q 50 88 60 82" 
+                                fill="none" 
+                                stroke={isOccupied ? "#996342" : "#9b8e81"} 
+                                strokeWidth="1" 
+                                strokeDasharray="1.5,1.5" 
+                              />
+                              {/* Estofado/Almofada */}
+                              <path 
+                                d="M 38 82 C 38 76, 42 73, 50 73 C 58 73, 62 76, 62 82 Z" 
+                                fill={isOccupied ? "#ffffff" : "#f1ede2"} 
+                                stroke={isOccupied ? "#925936" : "#8d8174"} 
+                                strokeWidth="1.5" 
+                              />
+                            </g>
+
+                            {/* Cadeira da Esquerda (Left Chair) */}
+                            <g className="transition-all duration-300">
+                              {/* Encosto de madeira curvo */}
+                              <path 
+                                d="M 18 36 Q 8 50 18 64" 
+                                fill="none" 
+                                stroke={isOccupied ? "#7c4524" : "#7c7264"} 
+                                strokeWidth="3" 
+                                strokeLinecap="round" 
+                              />
+                              {/* Detalhe interno */}
+                              <path 
+                                d="M 18 40 Q 12 50 18 60" 
+                                fill="none" 
+                                stroke={isOccupied ? "#996342" : "#9b8e81"} 
+                                strokeWidth="1" 
+                                strokeDasharray="1.5,1.5" 
+                              />
+                              {/* Estofado/Almofada */}
+                              <path 
+                                d="M 18 38 C 24 38, 27 42, 27 50 C 27 58, 24 62, 18 62 Z" 
+                                fill={isOccupied ? "#ffffff" : "#f1ede2"} 
+                                stroke={isOccupied ? "#925936" : "#8d8174"} 
+                                strokeWidth="1.5" 
+                              />
+                            </g>
+
+                            {/* Cadeira da Direita (Right Chair) */}
+                            <g className="transition-all duration-300">
+                              {/* Encosto de madeira curvo */}
+                              <path 
+                                d="M 82 36 Q 92 50 82 64" 
+                                fill="none" 
+                                stroke={isOccupied ? "#7c4524" : "#7c7264"} 
+                                strokeWidth="3" 
+                                strokeLinecap="round" 
+                              />
+                              {/* Detalhe interno */}
+                              <path 
+                                d="M 82 40 Q 88 50 82 60" 
+                                fill="none" 
+                                stroke={isOccupied ? "#996342" : "#9b8e81"} 
+                                strokeWidth="1" 
+                                strokeDasharray="1.5,1.5" 
+                              />
+                              {/* Estofado/Almofada */}
+                              <path 
+                                d="M 82 38 C 76 38, 73 42, 73 50 C 73 58, 76 62, 82 62 Z" 
+                                fill={isOccupied ? "#ffffff" : "#f1ede2"} 
+                                stroke={isOccupied ? "#925936" : "#8d8174"} 
+                                strokeWidth="1.5" 
+                              />
+                            </g>
+
+                            {/* TAMPO DA MESA (Square table top with rounded corners) */}
+                            <rect 
+                              x="26" 
+                              y="26" 
+                              width="48" 
+                              height="48" 
+                              rx="6" 
+                              fill={`url(#${isOccupied ? `woodGradActive-${num}` : `woodGradFree-${num}`})`} 
+                              stroke={isOccupied ? "#7c4524" : "#7c7264"} 
+                              strokeWidth="2.5" 
+                              className="shadow-sm transition-all duration-300"
+                            />
+
+                            {/* Linhas de Ripples/Ripas de Madeira (Wooden slats texture) */}
+                            <g opacity="0.15" stroke="#000" strokeWidth="1" strokeLinecap="round">
+                              <line x1="34" y1="26" x2="34" y2="74" />
+                              <line x1="42" y1="26" x2="42" y2="74" />
+                              <line x1="50" y1="26" x2="50" y2="74" />
+                              <line x1="58" y1="26" x2="58" y2="74" />
+                              <line x1="66" y1="26" x2="66" y2="74" />
+                            </g>
+
+                            {/* ELEMENTOS DECORATIVOS EM CIMA DA MESA */}
+                            {/* 1. Bule de Chá Branco (Teapot seen from top) */}
+                            <g className="transition-all duration-300">
+                              {/* Sombra suave abaixo do bule */}
+                              <circle cx="50" cy="42" r="7" fill="#000000" opacity="0.08" />
+                              {/* Corpo principal do bule */}
+                              <circle 
+                                cx="50" 
+                                cy="42" 
+                                r="6" 
+                                fill={isOccupied ? "#ffffff" : "#f6f4ed"} 
+                                stroke={isOccupied ? "#d1c9bd" : "#beb8ad"} 
+                                strokeWidth="1" 
+                              />
+                              {/* Alça do bule */}
+                              <path 
+                                d="M 50 36 L 50 32" 
+                                fill="none" 
+                                stroke={isOccupied ? "#eae6dc" : "#d8d3c5"} 
+                                strokeWidth="1.5" 
+                                strokeLinecap="round" 
+                              />
+                              {/* Bico do bule */}
+                              <path 
+                                d="M 50 48 L 50 51" 
+                                fill="none" 
+                                stroke={isOccupied ? "#eae6dc" : "#d8d3c5"} 
+                                strokeWidth="2" 
+                                strokeLinecap="round" 
+                              />
+                              {/* Pegador da tampa do bule */}
+                              <circle cx="50" cy="42" r="1.5" fill="#e1dbcf" />
+                            </g>
+
+                            {/* 2. Xícara de Chá Escura (Teacup seen from top) */}
+                            <g className="transition-all duration-300">
+                              {/* Sombra */}
+                              <circle cx="50" cy="58" r="4.5" fill="#000000" opacity="0.1" />
+                              {/* Pires/Pires da xícara */}
+                              <circle 
+                                cx="50" 
+                                cy="58" 
+                                r="4" 
+                                fill={isOccupied ? "#473d31" : "#5d5449"} 
+                                stroke={isOccupied ? "#352d24" : "#4a4237"} 
+                                strokeWidth="0.8" 
+                              />
+                              {/* Xícara em si */}
+                              <circle 
+                                cx="50" 
+                                cy="58" 
+                                r="2.5" 
+                                fill={isOccupied ? "#312a22" : "#423b32"} 
+                              />
+                              {/* Alça da xícara */}
+                              <path 
+                                d="M 47.5 58 Q 45 58 45 59.5" 
+                                fill="none" 
+                                stroke={isOccupied ? "#473d31" : "#5d5449"} 
+                                strokeWidth="0.8" 
+                              />
+                              {/* Conteúdo líquido (Café/Chá) */}
+                              <circle cx="50" cy="58" r="1.5" fill="#201306" />
+                            </g>
+
+                            {/* 3. Indicador Dinâmico central / Prato no centro com o Número da Mesa */}
+                            <g>
+                              {/* Base do prato central */}
+                              <circle cx="50" cy="50" r="11" fill={isOccupied ? "#ffffff" : "#fcfaf4"} stroke={isOccupied ? "#dcd2be" : "#ccc4b4"} strokeWidth="1" className="shadow-xs" />
+                              <circle cx="50" cy="50" r="8" fill="none" stroke={isOccupied ? "#f2e9d7" : "#e0dacb"} strokeWidth="1" />
+                              {/* Texto do número da mesa */}
+                              <text 
+                                x="50" 
+                                y="53.5" 
+                                textAnchor="middle" 
+                                className="font-sans font-black select-none pointer-events-none" 
+                                fontSize="9" 
+                                fill={isOccupied ? "#7c4524" : "#5d5449"}
+                              >
                                 {num}
-                              </span>
-                            </div>
-                            
-                            {/* Mini identificador sob a mesa */}
-                            <span className="text-[7px] font-extrabold uppercase tracking-widest mt-0.5 text-stone-400">
-                              MESA
-                            </span>
-                          </div>
+                              </text>
+                            </g>
+                          </svg>
+
+                          {/* Se ocupada, colocamos um brilho pulsante sutil ao redor da mesa para dar um charme interativo incrível */}
+                          {isOccupied && (
+                            <span className="absolute inset-2 border-2 border-amber-400 rounded-3xl animate-ping opacity-15 pointer-events-none" />
+                          )}
                         </div>
 
                         {isOccupied ? (

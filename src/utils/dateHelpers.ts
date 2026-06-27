@@ -22,11 +22,15 @@ export function formatDateBR(dateStr: string): string {
 }
 
 // Retorna dias restantes para expirar
-export function getDaysRemaining(expiryDateStr: string): number {
+export function getDaysRemaining(expiryDateStr: string | undefined | null): number {
+  if (!expiryDateStr) return 99999;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
   const expiry = new Date(expiryDateStr);
+  if (isNaN(expiry.getTime())) {
+    return 99999;
+  }
   // Garante que o timezone não quebre o cálculo (setando para o meio-dia)
   expiry.setHours(12, 0, 0, 0);
   
@@ -43,8 +47,24 @@ export interface ExpiryStatus {
   severity: 'danger' | 'warning' | 'success';
 }
 
-export function getExpiryStatus(expiryDateStr: string): ExpiryStatus {
+export function getExpiryStatus(expiryDateStr: string | undefined | null): ExpiryStatus {
+  if (!expiryDateStr) {
+    return {
+      label: 'Sem Validade',
+      badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30',
+      iconClass: 'text-emerald-500',
+      severity: 'success'
+    };
+  }
   const days = getDaysRemaining(expiryDateStr);
+  if (days === 99999) {
+    return {
+      label: 'Sem Validade',
+      badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30',
+      iconClass: 'text-emerald-500',
+      severity: 'success'
+    };
+  }
   
   if (days < 0) {
     return {
