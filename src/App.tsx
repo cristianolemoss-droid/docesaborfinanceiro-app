@@ -704,6 +704,7 @@ export default function App() {
                   onNavigate={(tab) => setActiveTab(tab)}
                   openOrders={openOrders}
                   onUpdateOpenOrders={setOpenOrders}
+                  tenantId={getActiveTenantId()}
                 />
               ) : (
                 <LockScreen 
@@ -748,6 +749,7 @@ export default function App() {
                 users={users}
                 onLogin={handleLoginSuccess}
                 devPassword={devPassword}
+                companyName={activeCompany?.nomeFantasia}
               />
             )}
 

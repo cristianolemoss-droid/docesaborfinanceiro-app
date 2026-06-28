@@ -22,9 +22,15 @@ import {
   Eye,
   EyeOff,
   User,
-  LogIn
+  LogIn,
+  Printer,
+  Share2,
+  Download,
+  Copy,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { jsPDF } from 'jspdf';
 
 interface FinanceiroProps {
   transactions: Transaction[];
@@ -35,6 +41,7 @@ interface FinanceiroProps {
   users?: UserAccount[];
   onLogin?: (role: 'admin' | 'collaborator' | 'developer', user?: UserAccount) => void;
   devPassword?: string;
+  companyName?: string;
 }
 
 export default function Financeiro({ 
@@ -45,7 +52,8 @@ export default function Financeiro({
   sales = [],
   users = [],
   onLogin,
-  devPassword
+  devPassword,
+  companyName
 }: FinanceiroProps) {
   const [filterType, setFilterType] = useState<'todos' | 'receita' | 'despesa'>('todos');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
@@ -60,6 +68,231 @@ export default function Financeiro({
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+
+  // Report Modal States
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportType, setReportType] = useState<'filter' | 'today' | 'all'>('filter');
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  const getReportData = () => {
+    let dataList = [...transactions];
+    let titleStr = "Histórico Geral Completo";
+
+    if (reportType === 'filter') {
+      dataList = filteredTransactions;
+      titleStr = `Livro Caixa Filtrado (${filterType === 'todos' ? 'Lançamentos' : filterType === 'receita' ? 'Receitas' : 'Despesas'} - ${selectedCategory})`;
+    } else if (reportType === 'today') {
+      const todayStr = getOffsetDateString(0);
+      dataList = transactions.filter(t => t.data === todayStr);
+      titleStr = `Livro Caixa do Dia (${formatDateBR(todayStr)})`;
+    }
+
+    // Sort by date descending
+    dataList = [...dataList].sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
+
+    let income = 0;
+    let expense = 0;
+    dataList.forEach(t => {
+      const val = Number(t.valor) || 0;
+      if (t.tipo === 'receita') income += val;
+      else expense += val;
+    });
+
+    if (reportType === 'today' || reportType === 'all' || (reportType === 'filter' && filterType !== 'receita')) {
+      const todayStr = getOffsetDateString(0);
+      const relevantLosses = reportType === 'today' 
+        ? lossRecords.filter(loss => loss.data === todayStr)
+        : (reportType === 'filter' ? [] : lossRecords);
+      
+      const transactionOrigemIds = new Set(dataList.map(t => t.origemId).filter(Boolean));
+      relevantLosses.forEach(loss => {
+        if (!transactionOrigemIds.has(loss.id)) {
+          expense += Number(loss.custoTotal) || 0;
+        }
+      });
+    }
+
+    const net = income - expense;
+
+    return {
+      dataList,
+      title: titleStr,
+      sums: { income, expense, net }
+    };
+  };
+
+  const generatePDF = (title: string, dataList: Transaction[], sums: { income: number; expense: number; net: number }) => {
+    const doc = new jsPDF();
+    
+    const margin = 15;
+    let y = 20;
+    
+    // Header
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.setTextColor(225, 29, 72); // rose-600
+    doc.text(companyName || 'Doce Sabor Confeitaria', margin, y);
+    
+    y += 8;
+    doc.setFontSize(14);
+    doc.setTextColor(30, 41, 59); // slate-800
+    doc.text(title, margin, y);
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139); // slate-500
+    doc.text(`Data de Emissão: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`, margin, y + 5);
+    
+    y += 12;
+    // Divider
+    doc.setDrawColor(244, 63, 94); // rose-500
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, 210 - margin, y);
+    
+    y += 10;
+    
+    // Summary boxes
+    doc.setFillColor(248, 250, 252); // slate-50
+    doc.roundedRect(margin, y, 180, 22, 3, 3, 'F');
+    
+    doc.setFontSize(9);
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(71, 85, 105);
+    doc.text('RESUMO FINANCEIRO', margin + 5, y + 6);
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(`Total Entradas: R$ ${sums.income.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin + 5, y + 14);
+    doc.text(`Total Saídas: R$ ${sums.expense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin + 65, y + 14);
+    
+    doc.setFont('Helvetica', 'bold');
+    if (sums.net >= 0) {
+      doc.setTextColor(22, 101, 52); // green-800
+    } else {
+      doc.setTextColor(153, 27, 27); // red-800
+    }
+    doc.text(`Saldo Líquido: R$ ${sums.net.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin + 125, y + 14);
+    
+    y += 30;
+    
+    // Table header
+    doc.setFillColor(244, 63, 94); // rose-500
+    doc.roundedRect(margin, y, 180, 8, 1, 1, 'F');
+    
+    doc.setFontSize(9);
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text('DATA', margin + 4, y + 5.5);
+    doc.text('DESCRIÇÃO', margin + 28, y + 5.5);
+    doc.text('CATEGORIA', margin + 110, y + 5.5);
+    doc.text('VALOR', margin + 155, y + 5.5);
+    
+    y += 8;
+    
+    // Table rows
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(30, 41, 59);
+    
+    dataList.forEach((tx, idx) => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+        
+        doc.setFillColor(244, 63, 94); // rose-500
+        doc.roundedRect(margin, y, 180, 8, 1, 1, 'F');
+        
+        doc.setFontSize(9);
+        doc.setFont('Helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('DATA', margin + 4, y + 5.5);
+        doc.text('DESCRIÇÃO', margin + 28, y + 5.5);
+        doc.text('CATEGORIA', margin + 110, y + 5.5);
+        doc.text('VALOR', margin + 155, y + 5.5);
+        
+        y += 8;
+        doc.setFont('Helvetica', 'normal');
+        doc.setTextColor(30, 41, 59);
+      }
+      
+      if (idx % 2 === 1) {
+        doc.setFillColor(254, 242, 242); // rose-50
+        doc.rect(margin, y, 180, 7.5, 'F');
+      }
+      
+      doc.setFontSize(8.5);
+      doc.text(formatDateBR(tx.data), margin + 4, y + 5);
+      
+      let desc = tx.descricao || '';
+      if (desc.length > 40) {
+        desc = desc.substring(0, 38) + '...';
+      }
+      doc.text(desc, margin + 28, y + 5);
+      
+      let cat = tx.categoria || '';
+      if (cat.length > 22) {
+        cat = cat.substring(0, 20) + '...';
+      }
+      doc.text(cat, margin + 110, y + 5);
+      
+      const isReceita = tx.tipo === 'receita';
+      doc.setFont('Helvetica', 'bold');
+      if (isReceita) {
+        doc.setTextColor(21, 128, 61); // green-700
+        doc.text(`+ R$ ${tx.valor.toFixed(2)}`, margin + 155, y + 5);
+      } else {
+        doc.setTextColor(220, 38, 38); // red-600
+        doc.text(`- R$ ${tx.valor.toFixed(2)}`, margin + 155, y + 5);
+      }
+      
+      doc.setTextColor(30, 41, 59);
+      doc.setFont('Helvetica', 'normal');
+      
+      y += 7.5;
+    });
+    
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Gerado via Sistema Doce Sabor - Painel Administrativo`, margin, 287);
+    
+    doc.save(`relatorio_financeiro_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const handleCopySummaryText = (title: string, dataList: Transaction[], sums: { income: number; expense: number; net: number }) => {
+    let text = `📊 *RELATÓRIO FINANCEIRO - ${companyName || 'Doce Sabor'}*\n`;
+    text += `📅 Gerado em: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}\n`;
+    text += `📝 Tipo: ${title}\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    text += `💰 *RESUMO GERAL:*\n`;
+    text += `🟢 Entradas: R$ ${sums.income.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+    text += `🔴 Saídas: R$ ${sums.expense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+    text += `💎 Saldo Líquido: R$ ${sums.net.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    text += `📋 *LANÇAMENTOS RECENTES:*\n`;
+    
+    if (dataList.length === 0) {
+      text += `Nenhum lançamento encontrado.\n`;
+    } else {
+      dataList.slice(0, 30).forEach(tx => {
+        const icon = tx.tipo === 'receita' ? '🟢' : '🔴';
+        text += `${icon} *${formatDateBR(tx.data)}* - R$ ${tx.valor.toFixed(2)}\n`;
+        text += `└ _${tx.descricao}_ [${tx.categoria}]\n`;
+      });
+      if (dataList.length > 30) {
+        text += `\n...e mais ${dataList.length - 30} lançamentos no relatório completo.`;
+      }
+    }
+    
+    text += `\n\n_Gerado automaticamente pelo Sistema de Gestão Confeitaria._`;
+    
+    navigator.clipboard.writeText(text).then(() => {
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 3000);
+    });
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   // Set default selected user
   useEffect(() => {
@@ -390,6 +623,14 @@ export default function Financeiro({
                 className="flex-1 sm:flex-none border border-rose-250 bg-rose-50/55 hover:bg-rose-100/50 text-rose-600 font-bold text-xs py-2 px-3.5 rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-colors pointer-events-auto"
               >
                 <MinusCircle className="w-4 h-4 shrink-0" /> Despesa
+              </button>
+
+              <button
+                id="btn-fin-report"
+                onClick={() => setShowReportModal(true)}
+                className="flex-1 sm:flex-none border border-rose-250 bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs py-2 px-3.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors pointer-events-auto shadow-xs"
+              >
+                <Printer className="w-4 h-4 shrink-0" /> Relatório
               </button>
             </>
           )}
@@ -799,7 +1040,316 @@ export default function Financeiro({
             </motion.div>
           </motion.div>
         )}
+
+        {showReportModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto no-print"
+            id="report-modal-backdrop"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-white rounded-3xl p-6 shadow-2xl border max-w-2xl w-full font-sans my-8"
+              id="report-modal-card"
+            >
+              {/* Header */}
+              <div className="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <Printer className="w-5 h-5 text-rose-500" />
+                  Imprimir e Compartilhar Relatório
+                </h3>
+                <button 
+                  id="btn-report-modal-close" 
+                  onClick={() => setShowReportModal(false)}
+                  className="p-1 hover:bg-slate-100 rounded-full transition-colors pointer-events-auto cursor-pointer"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              {/* Seletor de Escopo do Relatório */}
+              <div className="space-y-3 mb-6">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  Selecione o Escopo do Relatório:
+                </label>
+                <div className="grid grid-cols-3 gap-2 bg-slate-50 p-1 rounded-xl text-xs font-bold border border-slate-150">
+                  <button
+                    type="button"
+                    onClick={() => setReportType('filter')}
+                    className={`py-2 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                      reportType === 'filter' ? 'bg-rose-500 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    Filtro Atual ({filteredTransactions.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReportType('today')}
+                    className={`py-2 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                      reportType === 'today' ? 'bg-rose-500 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    Hoje ({transactions.filter(t => t.data === getOffsetDateString(0)).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReportType('all')}
+                    className={`py-2 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                      reportType === 'all' ? 'bg-rose-500 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    Tudo ({transactions.length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Preview da Impressão (Scrollable) */}
+              <div className="border rounded-2xl bg-slate-50 p-4 max-h-72 overflow-y-auto mb-6 text-slate-800 border-slate-200">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">
+                  Pré-visualização do Relatório:
+                </span>
+                
+                {(() => {
+                  const { title: rTitle, dataList: rData, sums: rSums } = getReportData();
+                  return (
+                    <div className="bg-white p-5 rounded-xl border border-slate-150 shadow-2xs font-sans text-xs">
+                      {/* Cabecalho Simulado */}
+                      <div className="border-b pb-3 mb-4 text-center md:text-left md:flex justify-between items-start">
+                        <div>
+                          <h4 className="text-sm font-black text-rose-600 uppercase">
+                            {companyName || 'Doce Sabor Confeitaria'}
+                          </h4>
+                          <p className="text-[10px] text-slate-400 font-bold font-sans">Relatório Administrativo de Caixa</p>
+                        </div>
+                        <div className="text-right mt-2 md:mt-0 font-mono text-[9px] text-slate-400 font-bold">
+                          <div>Emissão: {new Date().toLocaleDateString('pt-BR')}</div>
+                          <div>Período: {rTitle}</div>
+                        </div>
+                      </div>
+
+                      {/* Resumo Financeiro */}
+                      <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-lg border mb-4 text-[10px]">
+                        <div>
+                          <span className="text-slate-500 uppercase block font-bold font-sans">Receitas (+)</span>
+                          <span className="text-xs font-black text-emerald-700 font-mono">
+                            R$ {rSums.income.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 uppercase block font-bold font-sans">Despesas (-)</span>
+                          <span className="text-xs font-black text-rose-700 font-mono">
+                            R$ {rSums.expense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 uppercase block font-bold font-sans">Saldo</span>
+                          <span className={`text-xs font-black font-mono ${rSums.net >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                            R$ {rSums.net.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Lista Simplificada */}
+                      <div className="space-y-1.5 font-sans">
+                        <div className="grid grid-cols-4 font-extrabold text-[9px] uppercase text-slate-400 border-b pb-1">
+                          <span>Data</span>
+                          <span className="col-span-2">Descrição</span>
+                          <span className="text-right">Valor</span>
+                        </div>
+                        <div className="divide-y divide-slate-100 max-h-40 overflow-y-auto">
+                          {rData.length === 0 ? (
+                            <p className="text-center text-slate-400 py-4 italic">Nenhum lançamento.</p>
+                          ) : (
+                            rData.map(tx => (
+                              <div key={tx.id} className="grid grid-cols-4 py-1.5 text-[9.5px] items-center">
+                                <span className="font-mono font-medium text-slate-500">{formatDateBR(tx.data)}</span>
+                                <span className="col-span-2 font-semibold text-slate-800 truncate">{tx.descricao}</span>
+                                <span className={`text-right font-mono font-bold ${tx.tipo === 'receita' ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                  {tx.tipo === 'receita' ? '+' : '-'} R$ {tx.valor.toFixed(2)}
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Ações */}
+              <div className="flex flex-col sm:flex-row gap-2 justify-between pt-4 border-t">
+                {/* Botão de WhatsApp / Copiar */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const { title, dataList, sums } = getReportData();
+                    handleCopySummaryText(title, dataList, sums);
+                  }}
+                  className="py-2.5 px-4 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 font-bold rounded-xl transition-all pointer-events-auto cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {copySuccess ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      <span>Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="w-4 h-4 text-emerald-600" />
+                      <span>Compartilhar (WhatsApp)</span>
+                    </>
+                  )}
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowReportModal(false)}
+                    className="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all pointer-events-auto cursor-pointer font-bold"
+                  >
+                    Fechar
+                  </button>
+                  
+                  {/* Download PDF */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const { title, dataList, sums } = getReportData();
+                      generatePDF(title, dataList, sums);
+                    }}
+                    className="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold rounded-xl transition-all pointer-events-auto cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Baixar PDF</span>
+                  </button>
+
+                  {/* Print trigger */}
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    className="py-2.5 px-5 font-bold text-white bg-rose-500 hover:bg-rose-600 rounded-xl transition-all pointer-events-auto cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Imprimir</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
+
+      {/* AREA DE IMPRESSÃO - OCULTA NA TELA, SÓ APARECE NA IMPRESSORA */}
+      <div id="printable-report-area" className="hidden print:block bg-white p-8 font-sans text-xs text-slate-900 leading-relaxed">
+        {(() => {
+          const { title: rTitle, dataList: rData, sums: rSums } = getReportData();
+          return (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="border-b pb-4 flex justify-between items-start">
+                <div>
+                  <h1 className="text-xl font-black text-rose-600 uppercase tracking-tight">
+                    {companyName || 'Doce Sabor Confeitaria'}
+                  </h1>
+                  <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Relatório Oficial de Caixa & Histórico Geral</p>
+                </div>
+                <div className="text-right text-[10px] text-slate-500 font-mono font-medium">
+                  <div>Emissão: {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')}</div>
+                  <div className="font-bold text-slate-700">Período: {rTitle}</div>
+                </div>
+              </div>
+
+              {/* Sumários */}
+              <div className="grid grid-cols-3 gap-4 border border-slate-200 bg-slate-50/50 p-4 rounded-xl">
+                <div>
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Faturamento (Entradas)</span>
+                  <span className="text-base font-black text-emerald-700 font-mono">
+                    R$ {rSums.income.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Custos e Saídas (Despesas)</span>
+                  <span className="text-base font-black text-rose-700 font-mono">
+                    R$ {rSums.expense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Resultado de Exercício (Saldo Líquido)</span>
+                  <span className={`text-base font-black font-mono ${rSums.net >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    R$ {rSums.net.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Tabela de transações */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b pb-1">Movimentações do Período</h3>
+                <table className="w-full text-left border-collapse text-[10px]">
+                  <thead>
+                    <tr className="border-b border-slate-300 text-slate-500 font-bold uppercase tracking-wider">
+                      <th className="py-2 pr-2">Data</th>
+                      <th className="py-2">Descrição</th>
+                      <th className="py-2">Categoria</th>
+                      <th className="py-2 text-right">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {rData.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-8 text-center text-slate-400 italic">Nenhum lançamento no escopo selecionado.</td>
+                      </tr>
+                    ) : (
+                      rData.map(tx => (
+                        <tr key={tx.id} className="hover:bg-slate-50">
+                          <td className="py-2 pr-2 font-mono whitespace-nowrap text-slate-500">{formatDateBR(tx.data)}</td>
+                          <td className="py-2 font-semibold text-slate-900">{tx.descricao}</td>
+                          <td className="py-2 text-slate-600">{tx.categoria}</td>
+                          <td className={`py-2 text-right font-mono font-bold ${tx.tipo === 'receita' ? 'text-emerald-700' : 'text-rose-600'}`}>
+                            {tx.tipo === 'receita' ? '+' : '-'} R$ {tx.valor.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Rodapé institucional */}
+              <div className="border-t pt-4 mt-8 flex justify-between text-[8px] text-slate-400 font-bold uppercase tracking-widest">
+                <span>Doce Sabor - Sistema de Gestão Inteligente</span>
+                <span>Página 1 de 1</span>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #printable-report-area, #printable-report-area * {
+            visibility: visible !important;
+          }
+          #printable-report-area {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            display: block !important;
+            background: white !important;
+            color: black !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
 
     </div>
   );

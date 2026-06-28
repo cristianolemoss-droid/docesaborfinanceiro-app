@@ -49,6 +49,7 @@ interface DashboardProps {
   onNavigate: (tab: 'dashboard' | 'pdv' | 'estoque' | 'financeiro' | 'configuracao') => void;
   openOrders?: OpenOrder[];
   onUpdateOpenOrders?: React.Dispatch<React.SetStateAction<OpenOrder[]>>;
+  tenantId?: string;
 }
 
 export default function Dashboard({ 
@@ -58,7 +59,8 @@ export default function Dashboard({
   lossRecords = [],
   onNavigate,
   openOrders = [],
-  onUpdateOpenOrders
+  onUpdateOpenOrders,
+  tenantId
 }: DashboardProps) {
 
   // CONTROLADORES DE ESTADO DA ÁREA DE AÇÃO (PDV INTEGRADO)
@@ -359,7 +361,7 @@ export default function Dashboard({
           </div>
           <div>
             <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-              Doce Sabor <span className="text-xs font-bold font-mono px-2.5 py-1 bg-rose-500 text-white rounded-full shadow-3xs border border-rose-600">Confeitaria & Café</span>
+              {tenantId || 'Doce Sabor'}
             </h1>
             <p className="text-slate-500 text-sm mt-1">
               Painel de Gestão da Confeitaria — Adoçando o dia a dia com maestria, controle e amor! 🍰✨

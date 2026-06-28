@@ -10,7 +10,8 @@ import {
   Globe, 
   Plus, 
   ShieldAlert,
-  ArrowRight
+  ArrowRight,
+  Trash2
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { 
@@ -19,7 +20,8 @@ import {
   fetchTenantsFromSupabase, 
   fetchProfilesFromSupabase,
   getActiveTenantId,
-  setActiveTenantId
+  setActiveTenantId,
+  deleteTenantFromSupabase
 } from '../utils/supabaseDb';
 
 interface MultiTenantManagerProps {
@@ -36,6 +38,7 @@ export default function MultiTenantManager({ onAddUserLocal, users, supabaseConn
   // Form states - Tenant (Cliente)
   const [newTenantId, setNewTenantId] = useState('');
   const [newTenantName, setNewTenantName] = useState('');
+  const [copyCatalogFrom, setCopyCatalogFrom] = useState('none');
   const [tenantStatus, setTenantStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Form states - Profile (Usuário)
@@ -100,16 +103,44 @@ export default function MultiTenantManager({ onAddUserLocal, users, supabaseConn
     }
 
     setLoading(true);
-    const res = await registerTenantInSupabase(cleanId, cleanName);
+    const res = await registerTenantInSupabase(cleanId, cleanName, copyCatalogFrom);
     setLoading(false);
 
     if (res.success) {
-      setTenantStatus({ type: 'success', message: `Cliente "${cleanName}" cadastrado com sucesso no Supabase!` });
+      let successMsg = `Cliente "${cleanName}" cadastrado com sucesso no Supabase!`;
+      if (copyCatalogFrom !== 'none') {
+        successMsg += ` Catálogo de produtos copiado com estoque zerado e sem valores.`;
+      }
+      setTenantStatus({ type: 'success', message: successMsg });
       setNewTenantId('');
       setNewTenantName('');
+      setCopyCatalogFrom('none');
       loadData();
     } else {
       setTenantStatus({ type: 'error', message: `Erro ao cadastrar Cliente: ${res.error || 'Erro desconhecido'}` });
+    }
+  };
+
+  const handleDeleteTenant = async (tenantId: string, tenantName: string) => {
+    if (!window.confirm(`⚠️ Tem certeza de que deseja EXCLUIR o cliente "${tenantName}"? \n\nEsta ação apagará permanentemente o inquilino, todas as suas contas de usuários, produtos em estoque, registros de perdas, transações financeiras e histórico de vendas vinculados a este cliente no Supabase.`)) {
+      return;
+    }
+
+    setLoading(true);
+    const res = await deleteTenantFromSupabase(tenantId);
+    setLoading(false);
+
+    if (res.success) {
+      alert(`✅ Cliente "${tenantName}" e todas as suas dependências foram excluídos com sucesso!`);
+      if (activeTenant === tenantId) {
+        setActiveTenantId('tenant_default');
+        setActiveTenant('tenant_default');
+        window.location.reload();
+      } else {
+        loadData();
+      }
+    } else {
+      alert(`❌ Erro ao excluir cliente: ${res.error || 'Erro desconhecido'}`);
     }
   };
 
@@ -268,6 +299,27 @@ export default function MultiTenantManager({ onAddUserLocal, users, supabaseConn
               />
             </div>
 
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Copiar Catálogo de Produtos de:</label>
+              <select 
+                value={copyCatalogFrom}
+                onChange={(e) => setCopyCatalogFrom(e.target.value)}
+                disabled={!supabaseConnected || loading}
+                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-3xs cursor-pointer"
+              >
+                <option value="none">Nenhum (Começar com catálogo vazio)</option>
+                <option value="tenant_default">Padrão (tenant_default)</option>
+                {tenants.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.id})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[9px] text-slate-400 mt-1 leading-tight">
+                💡 Copia os produtos (nomes, categorias, unidades, estoque mínimo e imagens) de outro cliente, mas com <strong>estoque zerado</strong> e <strong>sem preços ou custos</strong> para personalização própria!
+              </p>
+            </div>
+
             {tenantStatus && (
               <div className={`p-2 rounded-xl text-xs flex items-start gap-1.5 border ${
                 tenantStatus.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-rose-50 border-rose-100 text-rose-800'
@@ -367,11 +419,40 @@ export default function MultiTenantManager({ onAddUserLocal, users, supabaseConn
             </div>
 
             {profileStatus && (
-              <div className={`p-2 rounded-xl text-xs flex items-start gap-1.5 border ${
+              <div className={`p-2.5 rounded-xl text-xs flex flex-col gap-1.5 border ${
                 profileStatus.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-rose-50 border-rose-100 text-rose-800'
               }`}>
-                {profileStatus.type === 'success' ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" /> : <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />}
-                <span className="text-[10px]">{profileStatus.message}</span>
+                <div className="flex items-start gap-1.5">
+                  {profileStatus.type === 'success' ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" /> : <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />}
+                  <span className="text-[10.5px] font-semibold">{profileStatus.message}</span>
+                </div>
+                
+                {profileStatus.type === 'error' && (profileStatus.message.toLowerCase().includes('senha') || profileStatus.message.toLowerCase().includes('column') || profileStatus.message.toLowerCase().includes('schema cache')) && (
+                  <div className="mt-2 p-3 bg-slate-900 text-slate-100 rounded-lg font-mono text-[9.5px] leading-relaxed space-y-2 border border-slate-950">
+                    <p className="text-amber-400 font-sans font-extrabold uppercase tracking-wide">
+                      ⚠️ SOLUÇÃO DO PROBLEMA:
+                    </p>
+                    <p className="text-slate-300 font-sans">
+                      A tabela de usuários (<code className="text-rose-300">perfis</code>) no seu Supabase foi criada antes de adicionarmos o suporte a senhas, ou o cache de esquemas do Supabase está desatualizado.
+                    </p>
+                    <p className="text-slate-300 font-sans">
+                      Para consertar isso em 10 segundos, faça o seguinte:
+                    </p>
+                    <ol className="list-decimal pl-4 space-y-1 text-slate-300 font-sans">
+                      <li>Abra o menu <strong className="text-white">SQL Editor</strong> no painel esquerdo do seu site do Supabase.</li>
+                      <li>Crie uma nova consulta (New Query), cole os comandos abaixo e clique em <strong className="text-emerald-400">Run</strong>:</li>
+                    </ol>
+                    <pre className="p-2 bg-slate-950 text-emerald-400 rounded-md overflow-x-auto select-all cursor-pointer font-bold font-mono">
+{`ALTER TABLE public.perfis 
+ADD COLUMN IF NOT EXISTS senha TEXT DEFAULT '1234' NOT NULL;
+
+NOTIFY pgrst, 'reload schema';`}
+                    </pre>
+                    <p className="text-[9px] text-slate-400 font-sans italic leading-tight">
+                      💡 Dica: O comando NOTIFY força o Supabase a reatualizar o cache de esquemas instantaneamente para que a nova coluna seja visível no aplicativo.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -408,16 +489,27 @@ export default function MultiTenantManager({ onAddUserLocal, users, supabaseConn
                     <td className="p-2 font-mono">{t.id}</td>
                     <td className="p-2">{t.name}</td>
                     <td className="p-2 text-right">
-                      {t.id === activeTenant ? (
-                        <span className="text-[10px] text-rose-600 bg-rose-100/70 px-2 py-0.5 rounded-full border border-rose-200 font-extrabold uppercase">Ativo</span>
-                      ) : (
+                      <div className="flex items-center justify-end gap-1.5">
+                        {t.id === activeTenant ? (
+                          <span className="text-[10px] text-rose-600 bg-rose-100/70 px-2 py-0.5 rounded-full border border-rose-200 font-extrabold uppercase">Ativo</span>
+                        ) : (
+                          <button
+                            onClick={() => handleSwitchTenant(t.id)}
+                            disabled={loading}
+                            className="text-[10px] font-extrabold text-slate-600 hover:text-white bg-slate-200 hover:bg-rose-500 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer inline-flex items-center"
+                          >
+                            Ativar ➔
+                          </button>
+                        )}
                         <button
-                          onClick={() => handleSwitchTenant(t.id)}
-                          className="text-[10px] font-extrabold text-slate-600 hover:text-white bg-slate-200 hover:bg-rose-500 px-2 py-1 rounded-lg transition-all"
+                          onClick={() => handleDeleteTenant(t.id, t.name)}
+                          disabled={loading}
+                          className="text-[10px] font-bold text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-500 p-1.5 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center border border-rose-200"
+                          title="Excluir Cliente"
                         >
-                          Ativar ➔
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}

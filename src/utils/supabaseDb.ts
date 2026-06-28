@@ -383,18 +383,106 @@ export async function deleteSingleSale(id: string): Promise<boolean> {
 }
 
 /**
- * Register a new Tenant (Client) in Supabase
+ * Register a new Tenant (Client) in Supabase and optionally copy product catalog
  */
-export async function registerTenantInSupabase(id: string, name: string): Promise<{ success: boolean; error?: string }> {
+export async function registerTenantInSupabase(
+  id: string, 
+  name: string, 
+  copyFromTenantId?: string
+): Promise<{ success: boolean; error?: string }> {
   if (!isSupabaseConfigured() || !supabase) {
     return { success: false, error: 'Supabase não está configurado.' };
   }
   try {
+    // 1. Register the new tenant
     const { error } = await supabase.from('inquilinos').upsert({ id, name });
     if (error) throw new Error(error.message);
+
+    // 2. If copy catalog is requested and specified
+    if (copyFromTenantId && copyFromTenantId !== 'none') {
+      const { data: sourceProducts, error: fetchError } = await supabase
+        .from('bakery_inventory')
+        .select('*')
+        .eq('tenant_id', copyFromTenantId);
+
+      if (fetchError) {
+        console.error('Erro ao buscar catálogo de origem:', fetchError);
+      } else if (sourceProducts && sourceProducts.length > 0) {
+        // Prevent duplicates in the source by keying on lowercase name and category
+        const uniqueProductsMap = new Map<string, any>();
+        sourceProducts.forEach(item => {
+          if (item.nome) {
+            const key = `${item.nome.trim().toLowerCase()}_${(item.categoria || '').trim().toLowerCase()}`;
+            if (!uniqueProductsMap.has(key)) {
+              uniqueProductsMap.set(key, item);
+            }
+          }
+        });
+
+        const datePlaceholder = new Date();
+        datePlaceholder.setMonth(datePlaceholder.getMonth() + 6);
+        const validadeStr = datePlaceholder.toISOString().split('T')[0];
+
+        const newItems = Array.from(uniqueProductsMap.values()).map(item => ({
+          id: 'item_' + Math.random().toString(36).substr(2, 9),
+          nome: item.nome,
+          tipo: item.tipo || 'produto_final',
+          quantidade: 0,           // Quantidade zerada
+          unidade: item.unidade || 'un',
+          custo_unitario: 0,      // Custo zerado
+          preco_venda: null,       // Preço de venda em branco
+          estoque_minimo: item.estoque_minimo || 0,
+          data_fabricacao: null,   // Sem data de fabricação
+          data_validade: item.data_validade || validadeStr, // Validade futura/existente por causa do NOT NULL
+          categoria: item.categoria || 'Geral',
+          receita_ingredientes: null, // Sem receita vinculada para personalização própria
+          imagem: item.imagem || null,
+          tenant_id: id
+        }));
+
+        if (newItems.length > 0) {
+          const { error: insertError } = await supabase
+            .from('bakery_inventory')
+            .insert(newItems);
+          
+          if (insertError) {
+            console.error('Erro ao inserir catálogo copiado:', insertError);
+          }
+        }
+      }
+    }
+
     return { success: true };
   } catch (err: any) {
     console.error('Erro ao registrar tenant no Supabase:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Delete a Tenant (Client) from Supabase, including cleaning up other tables
+ */
+export async function deleteTenantFromSupabase(id: string): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured() || !supabase) {
+    return { success: false, error: 'Supabase não está configurado.' };
+  }
+  try {
+    // 1. Delete matching records from other tables (to avoid orphaned data)
+    await Promise.all([
+      supabase.from('bakery_inventory').delete().eq('tenant_id', id),
+      supabase.from('bakery_loss_records').delete().eq('tenant_id', id),
+      supabase.from('bakery_sales').delete().eq('tenant_id', id),
+      supabase.from('bakery_transactions').delete().eq('tenant_id', id),
+      supabase.from('perfis').delete().eq('tenant_id', id)
+    ]);
+
+    // 2. Delete the tenant itself
+    const { error } = await supabase.from('inquilinos').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+    
+    return { success: true };
+  } catch (err: any) {
+    console.error('Erro ao deletar tenant no Supabase:', err);
     return { success: false, error: err.message };
   }
 }
@@ -487,7 +575,7 @@ CREATE TABLE IF NOT EXISTS public.perfis (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     nome TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('admin', 'collaborator')),
+    role TEXT NOT NULL CHECK (role IN ('admin', 'collaborator', 'developer')),
     senha TEXT DEFAULT '1234' NOT NULL,
     tenant_id TEXT REFERENCES public.inquilinos(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
