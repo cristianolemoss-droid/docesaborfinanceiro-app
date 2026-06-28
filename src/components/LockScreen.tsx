@@ -6,13 +6,14 @@ import bgImage from '../assets/images/bakery_display_bg_1781612198209.jpg';
 
 interface LockScreenProps {
   requiredRole: 'admin' | 'any';
-  onLogin: (role: 'admin' | 'collaborator', user?: UserAccount) => void;
+  onLogin: (role: 'admin' | 'collaborator' | 'developer', user?: UserAccount) => void;
   onNavigateToPublic: () => void;
   companyName?: string;
   users?: UserAccount[];
+  devPassword?: string;
 }
 
-export default function LockScreen({ requiredRole, onLogin, onNavigateToPublic, companyName, users = [] }: LockScreenProps) {
+export default function LockScreen({ requiredRole, onLogin, onNavigateToPublic, companyName, users = [], devPassword }: LockScreenProps) {
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -33,6 +34,17 @@ export default function LockScreen({ requiredRole, onLogin, onNavigateToPublic, 
     setError(null);
 
     const cleanPass = password.trim();
+
+    if (devPassword && cleanPass === devPassword) {
+      onLogin('developer', {
+        id: 'u_developer',
+        username: 'desenvolvedor',
+        nome: 'Desenvolvedor do Sistema',
+        senha: devPassword,
+        role: 'developer'
+      });
+      return;
+    }
 
     if (users && users.length > 0) {
       if (!selectedUserId) {

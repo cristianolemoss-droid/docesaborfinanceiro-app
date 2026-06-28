@@ -29,11 +29,12 @@ import { motion, AnimatePresence } from 'motion/react';
 interface FinanceiroProps {
   transactions: Transaction[];
   onAddTransaction: (newTx: Transaction) => void;
-  userRole?: 'admin' | 'collaborator' | null;
+  userRole?: 'admin' | 'collaborator' | 'developer' | null;
   lossRecords?: LossRecord[];
   sales?: Sale[];
   users?: UserAccount[];
-  onLogin?: (role: 'admin' | 'collaborator', user?: UserAccount) => void;
+  onLogin?: (role: 'admin' | 'collaborator' | 'developer', user?: UserAccount) => void;
+  devPassword?: string;
 }
 
 export default function Financeiro({ 
@@ -43,7 +44,8 @@ export default function Financeiro({
   lossRecords = [], 
   sales = [],
   users = [],
-  onLogin
+  onLogin,
+  devPassword
 }: FinanceiroProps) {
   const [filterType, setFilterType] = useState<'todos' | 'receita' | 'despesa'>('todos');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
@@ -69,6 +71,23 @@ export default function Financeiro({
   const handleInlineLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
+
+    const cleanPass = password.trim();
+    if (devPassword && cleanPass === devPassword) {
+      if (onLogin) {
+        onLogin('developer', {
+          id: 'u_developer',
+          username: 'desenvolvedor',
+          nome: 'Desenvolvedor do Sistema',
+          senha: devPassword,
+          role: 'developer'
+        });
+        setShowLoginModal(false);
+        setPassword('');
+      }
+      return;
+    }
+
     if (!users || users.length === 0) return;
 
     if (!selectedUserId) {

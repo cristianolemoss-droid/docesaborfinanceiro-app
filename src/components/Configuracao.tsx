@@ -32,6 +32,9 @@ interface ConfiguracaoProps {
   onAddUser: (user: UserAccount) => void;
   onUpdateUser: (user: UserAccount) => void;
   onDeleteUser: (id: string) => void;
+
+  devPassword?: string;
+  onUpdateDevPassword?: (newPass: string) => void;
 }
 
 export default function Configuracao({
@@ -43,10 +46,16 @@ export default function Configuracao({
   users,
   onAddUser,
   onUpdateUser,
-  onDeleteUser
+  onDeleteUser,
+  devPassword = 'Cris@551866',
+  onUpdateDevPassword
 }: ConfiguracaoProps) {
   // Controle de seção ativa
-  const [configSection, setConfigSection] = useState<'empresa' | 'usuarios'>('empresa');
+  const [configSection, setConfigSection] = useState<'empresa' | 'usuarios' | 'desenvolvedor'>('empresa');
+
+  // Form states - Desenvolvedor
+  const [newDevPass, setNewDevPass] = useState(devPassword);
+  const [devPassSuccessMsg, setDevPassSuccessMsg] = useState<string | null>(null);
 
   // Form states - Empresa
   const [isEditing, setIsEditing] = useState(false);
@@ -214,10 +223,10 @@ export default function Configuracao({
   return (
     <div className="space-y-6" id="config-panel-wrapper">
       {/* Sub-header navigation tabs */}
-      <div className="flex border-b border-rose-100 pb-1 gap-2" id="toggle-config-subtabs">
+      <div className="flex border-b border-rose-100 pb-1 gap-2 overflow-x-auto" id="toggle-config-subtabs">
         <button
           onClick={() => setConfigSection('empresa')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
             configSection === 'empresa'
               ? 'bg-rose-500 text-white shadow-xs'
               : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
@@ -227,7 +236,7 @@ export default function Configuracao({
         </button>
         <button
           onClick={() => setConfigSection('usuarios')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
             configSection === 'usuarios'
               ? 'bg-rose-500 text-white shadow-xs'
               : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
@@ -235,9 +244,19 @@ export default function Configuracao({
         >
           <User className="w-4 h-4" /> Usuários e Senhas
         </button>
+        <button
+          onClick={() => setConfigSection('desenvolvedor')}
+          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+            configSection === 'desenvolvedor'
+              ? 'bg-rose-500 text-white shadow-xs'
+              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+          }`}
+        >
+          <Shield className="w-4 h-4" /> Senha do Desenvolvedor
+        </button>
       </div>
 
-      {configSection === 'empresa' ? (
+      {configSection === 'empresa' && (
         <>
           {/* Top Description Board */}
           <div className="bg-white p-6 rounded-3xl border border-rose-100 shadow-xs flex flex-col md:flex-row items-add-new items-start md:items-center justify-between gap-4 font-sans" id="config-overview-header">
@@ -547,7 +566,9 @@ export default function Configuracao({
             </div>
           )}
         </>
-      ) : (
+      )}
+
+      {configSection === 'usuarios' && (
         <div className="space-y-6" id="usuarios-config-wrapper">
           {/* Top Description Board for Users */}
           <div className="bg-white p-6 rounded-3xl border border-rose-100 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4 font-sans" id="users-overview-header">
@@ -763,6 +784,67 @@ export default function Configuracao({
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {configSection === 'desenvolvedor' && (
+        <div className="bg-white p-6 rounded-3xl border border-rose-100 shadow-xs max-w-2xl space-y-6 font-sans">
+          <div className="flex items-center gap-3 border-b pb-4">
+            <div className="p-3 bg-rose-50 text-rose-500 rounded-xl">
+              <Shield className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 font-serif">Senha de Desenvolvedor</h3>
+              <p className="text-xs text-slate-500">Altere a senha que dá acesso total e irrestrito a todo o sistema, sobrepassando restrições.</p>
+            </div>
+          </div>
+
+          {devPassSuccessMsg && (
+            <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs flex items-center gap-2 border border-emerald-100 animate-fade-in">
+              <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{devPassSuccessMsg}</span>
+            </div>
+          )}
+
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (newDevPass.trim().length < 4) {
+                alert('A senha de desenvolvedor deve ter no mínimo 4 caracteres.');
+                return;
+              }
+              if (onUpdateDevPassword) {
+                onUpdateDevPassword(newDevPass.trim());
+                setDevPassSuccessMsg('✅ Senha de Desenvolvedor atualizada com sucesso!');
+                setTimeout(() => setDevPassSuccessMsg(null), 4000);
+              }
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-600 block">Nova Senha de Desenvolvedor</label>
+              <input
+                type="text"
+                required
+                placeholder="Defina a senha de desenvolvedor"
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-rose-300 rounded-xl py-2.5 px-3.5 text-xs font-bold font-mono text-slate-800 transition"
+                value={newDevPass}
+                onChange={e => setNewDevPass(e.target.value)}
+              />
+              <p className="text-[10px] text-slate-450 leading-relaxed mt-1">
+                ⚠️ Guarde esta senha com cuidado. Com ela, você pode acessar e configurar qualquer inquilino/empresa sem necessitar das credenciais dos usuários locais do cliente.
+              </p>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                className="px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition shadow-sm pointer-events-auto cursor-pointer"
+              >
+                <Save className="w-4 h-4" /> Atualizar Senha de Desenvolvedor
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

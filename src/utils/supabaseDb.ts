@@ -407,7 +407,8 @@ export async function registerProfileInSupabase(
   username: string,
   nome: string,
   role: string,
-  tenantId: string
+  tenantId: string,
+  senha?: string
 ): Promise<{ success: boolean; error?: string }> {
   if (!isSupabaseConfigured() || !supabase) {
     return { success: false, error: 'Supabase não está configurado.' };
@@ -418,7 +419,8 @@ export async function registerProfileInSupabase(
       username,
       nome,
       role,
-      tenant_id: tenantId
+      tenant_id: tenantId,
+      senha: senha || '1234'
     });
     if (error) throw new Error(error.message);
     return { success: true };
@@ -486,9 +488,13 @@ CREATE TABLE IF NOT EXISTS public.perfis (
     username TEXT NOT NULL UNIQUE,
     nome TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('admin', 'collaborator')),
+    senha TEXT DEFAULT '1234' NOT NULL,
     tenant_id TEXT REFERENCES public.inquilinos(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Se sua tabela já existe, execute a linha abaixo para adicionar a coluna de senhas:
+-- ALTER TABLE public.perfis ADD COLUMN IF NOT EXISTS senha TEXT DEFAULT '1234' NOT NULL;
 
 -- Habilitar RLS para perfis
 ALTER TABLE public.perfis ENABLE ROW LEVEL SECURITY;

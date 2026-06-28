@@ -144,7 +144,8 @@ export default function MultiTenantManager({ onAddUserLocal, users, supabaseConn
       cleanUsername,
       cleanNome,
       newProfileRole,
-      newProfileTenantId
+      newProfileTenantId,
+      cleanSenha
     );
     setLoading(false);
 

@@ -18,6 +18,7 @@ import Financeiro from './components/Financeiro';
 import LockScreen from './components/LockScreen';
 import Configuracao from './components/Configuracao';
 import MultiTenantManager from './components/MultiTenantManager';
+import DeveloperLockScreen from './components/DeveloperLockScreen';
 import { 
   Cake, 
   LayoutDashboard, 
@@ -60,6 +61,8 @@ import {
   syncAllInventoryItems, 
   deleteSingleSale,
   deleteTransactionsByOrigin,
+  fetchProfilesFromSupabase,
+  getActiveTenantId,
   SUPABASE_SQL_SETUP_CODE 
 } from './utils/supabaseDb';
 
@@ -82,8 +85,20 @@ const INITIAL_USERS: UserAccount[] = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'pdv' | 'estoque' | 'financeiro' | 'configuracao'>('dashboard');
-  const [userRole, setUserRole] = useState<'admin' | 'collaborator' | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'collaborator' | 'developer' | null>(null);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [devPassword, setDevPassword] = useState<string>(() => {
+    const cached = localStorage.getItem('developer_password');
+    if (!cached || cached === 'dev1234') {
+      return 'Cris@551866';
+    }
+    return cached;
+  });
+
+  const handleUpdateDevPassword = (newPass: string) => {
+    setDevPassword(newPass);
+    localStorage.setItem('developer_password', newPass);
+  };
 
   // Core State
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -136,6 +151,40 @@ export default function App() {
         localStorage.setItem('bakery_users', JSON.stringify(INITIAL_USERS));
       }
 
+      // If Supabase is configured, fetch profiles right away to enrich our users list
+      const configured = isSupabaseConfigured();
+      if (configured) {
+        try {
+          const dbProfiles = await fetchProfilesFromSupabase();
+          if (dbProfiles && dbProfiles.length > 0) {
+            const mappedDbUsers: UserAccount[] = dbProfiles.map(p => ({
+              id: p.id,
+              username: p.username,
+              nome: p.nome,
+              senha: p.senha || '1234',
+              role: p.role as 'admin' | 'collaborator',
+              tenantId: p.tenant_id
+            }));
+
+            // Merge with local/INITIAL_USERS so they don't overwrite each other
+            const mergedUsers = [...INITIAL_USERS];
+            mappedDbUsers.forEach(du => {
+              const existingIdx = mergedUsers.findIndex(mu => mu.id === du.id || mu.username === du.username);
+              if (existingIdx >= 0) {
+                mergedUsers[existingIdx] = { ...mergedUsers[existingIdx], ...du };
+              } else {
+                mergedUsers.push(du);
+              }
+            });
+            activeUsers = mergedUsers;
+            setUsers(mergedUsers);
+            localStorage.setItem('bakery_users', JSON.stringify(mergedUsers));
+          }
+        } catch (err) {
+          console.error('Erro ao buscar perfis do Supabase no boot:', err);
+        }
+      }
+
       // Restore logged-in session if available
       const cachedLoggedUserId = localStorage.getItem('logged_user_id');
       const cachedLoggedUserRole = localStorage.getItem('logged_user_role');
@@ -144,10 +193,12 @@ export default function App() {
         const found = activeUsers.find((u: any) => u.id === cachedLoggedUserId);
         if (found) {
           setCurrentUser(found);
+          if (found.tenantId) {
+            localStorage.setItem('supabase_active_tenant_id', found.tenantId);
+          }
         }
       }
 
-      const configured = isSupabaseConfigured();
       if (configured) {
         setSupabaseLogs('Supabase detectado! Tentando carregar tabelas de nuvem...');
         const res = await downloadAllFromSupabase();
@@ -221,6 +272,39 @@ export default function App() {
   // Derived active company
   const activeCompany = companies.find(c => c.ativo) || INITIAL_COMPANY;
 
+  // Refresh data for the active tenant dynamically
+  const refreshDataForActiveTenant = async () => {
+    if (!isSupabaseConfigured()) return;
+    setIsSyncing(true);
+    setSyncStatusText('Carregando dados do Cliente...');
+    try {
+      const res = await downloadAllFromSupabase();
+      if (res.success && res.inventory && res.lossRecords && res.sales && res.transactions) {
+        setInventory(res.inventory);
+        setLossRecords(res.lossRecords);
+        setTransactions(res.transactions);
+        setSales(res.sales);
+        setSupabaseConnected(true);
+        setSupabaseLogs(`Conectado! Dados carregados para o Cliente [${getActiveTenantId()}] em tempo real.`);
+        
+        // Save to cache
+        localStorage.setItem('bakery_inventory', JSON.stringify(res.inventory));
+        localStorage.setItem('bakery_losses', JSON.stringify(res.lossRecords));
+        localStorage.setItem('bakery_transactions', JSON.stringify(res.transactions));
+        localStorage.setItem('bakery_sales', JSON.stringify(res.sales));
+      } else {
+        console.error('Falha ao baixar dados do inquilino:', res.error);
+        setSupabaseLogs(`Erro ao carregar dados do Cliente: ${res.error}`);
+      }
+    } catch (e: any) {
+      console.error(e);
+      setSupabaseLogs(`Erro crítico de sincronia: ${e.message}`);
+    } finally {
+      setIsSyncing(false);
+      setSyncStatusText(null);
+    }
+  };
+
   // Handle login success and persist session
   const handleLoginSuccess = (role: 'admin' | 'collaborator', user?: UserAccount) => {
     setUserRole(role);
@@ -228,7 +312,42 @@ export default function App() {
       setCurrentUser(user);
       localStorage.setItem('logged_user_id', user.id);
       localStorage.setItem('logged_user_role', role);
+      if (user.tenantId) {
+        localStorage.setItem('supabase_active_tenant_id', user.tenantId);
+      } else {
+        localStorage.removeItem('supabase_active_tenant_id');
+      }
+      
+      // Fetch fresh data for the newly logged-in tenant!
+      setTimeout(() => {
+        refreshDataForActiveTenant();
+      }, 50);
     }
+  };
+
+  // Handle logout and clear session/data to isolate tenants
+  const handleLogout = () => {
+    setUserRole(null);
+    setCurrentUser(null);
+    localStorage.removeItem('logged_user_id');
+    localStorage.removeItem('logged_user_role');
+    localStorage.removeItem('supabase_active_tenant_id');
+    
+    // Clear core state to isolate data between tenants completely
+    setInventory([]);
+    setLossRecords([]);
+    setTransactions([]);
+    setSales([]);
+    setOpenOrders([]);
+    
+    // Clear local storage cache
+    localStorage.removeItem('bakery_inventory');
+    localStorage.removeItem('bakery_losses');
+    localStorage.removeItem('bakery_transactions');
+    localStorage.removeItem('bakery_sales');
+    localStorage.removeItem('bakery_open_orders');
+    
+    setSupabaseLogs('Sessão encerrada por segurança. Faça login com outro usuário.');
   };
 
   // Handle inventory updates elegantly with safe Supabase triggers
@@ -471,18 +590,17 @@ export default function App() {
                   <span className="flex items-center gap-1 text-rose-800">
                     <span className="text-[11.5px]">👑 Admin</span>
                   </span>
+                ) : userRole === 'developer' ? (
+                  <span className="flex items-center gap-1 text-teal-800">
+                    <span className="text-[11.5px]">🛠️ Desenvolvedor</span>
+                  </span>
                 ) : (
                   <span className="flex items-center gap-1 text-slate-700">
                     <span className="text-[11.5px]">🧑‍🍳 Colaborador</span>
                   </span>
                 )}
                 <button
-                  onClick={() => {
-                    setUserRole(null);
-                    setCurrentUser(null);
-                    localStorage.removeItem('logged_user_id');
-                    localStorage.removeItem('logged_user_role');
-                  }}
+                  onClick={handleLogout}
                   className="p-1 hover:bg-rose-100/90 hover:text-rose-900 rounded-lg transition-all ml-1 cursor-pointer pointer-events-auto"
                   title="Bloquear painel / Sair"
                   id="btn-role-logout"
@@ -577,7 +695,7 @@ export default function App() {
             className="w-full"
           >
             {activeTab === 'dashboard' && (
-              userRole === 'admin' ? (
+              (userRole === 'admin' || userRole === 'developer') ? (
                 <Dashboard 
                   inventory={inventory}
                   transactions={transactions}
@@ -594,6 +712,7 @@ export default function App() {
                   onNavigateToPublic={() => setActiveTab('pdv')}
                   companyName={activeCompany.nomeFantasia}
                   users={users}
+                  devPassword={devPassword}
                 />
               )
             )}
@@ -628,11 +747,12 @@ export default function App() {
                 sales={sales}
                 users={users}
                 onLogin={handleLoginSuccess}
+                devPassword={devPassword}
               />
             )}
 
             {activeTab === 'configuracao' && (
-              userRole === 'admin' ? (
+              userRole === 'developer' ? (
                 <Configuracao 
                   companies={companies}
                   onAddCompany={(c) => {
@@ -654,14 +774,25 @@ export default function App() {
                   onAddUser={handleAddUser}
                   onUpdateUser={handleUpdateUser}
                   onDeleteUser={handleDeleteUser}
+                  devPassword={devPassword}
+                  onUpdateDevPassword={handleUpdateDevPassword}
                 />
               ) : (
-                <LockScreen 
-                  requiredRole="admin"
-                  onLogin={handleLoginSuccess}
+                <DeveloperLockScreen 
+                  onLogin={() => {
+                    setUserRole('developer');
+                    setCurrentUser({
+                      id: 'u_developer',
+                      username: 'desenvolvedor',
+                      nome: 'Desenvolvedor do Sistema',
+                      senha: devPassword,
+                      role: 'developer'
+                    });
+                    localStorage.setItem('logged_user_id', 'u_developer');
+                    localStorage.setItem('logged_user_role', 'developer');
+                  }}
                   onNavigateToPublic={() => setActiveTab('pdv')}
-                  companyName={activeCompany.nomeFantasia}
-                  users={users}
+                  devPassword={devPassword}
                 />
               )
             )}

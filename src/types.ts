@@ -93,7 +93,7 @@ export interface UserAccount {
   username: string; // ex: admin, colab, maria
   nome: string;     // ex: Administrador, Maria Confeiteira
   senha: string;    // senha correspondente
-  role: 'admin' | 'collaborator';
+  role: 'admin' | 'collaborator' | 'developer';
   tenantId?: string; // ID do inquilino/cliente para suporte a multi-tenancy
 }
 
