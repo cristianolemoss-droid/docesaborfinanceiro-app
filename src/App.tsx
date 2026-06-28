@@ -47,7 +47,11 @@ import {
   Settings,
   TrendingUp,
   ShoppingCart,
-  Package
+  Package,
+  Smartphone,
+  Monitor,
+  Apple,
+  Chrome
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { isSupabaseConfigured, getSupabaseConfig, getSupabaseCredentials, saveSupabaseCredentials } from './utils/supabaseClient';
@@ -109,6 +113,47 @@ export default function App() {
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // PWA states and setup
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
+  const [installDeviceTab, setInstallDeviceTab] = useState<'android' | 'ios' | 'desktop'>('android');
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      console.log('beforeinstallprompt capturado!');
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+
+    const checkStandalone = () => {
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true;
+      setIsInstalled(isStandalone);
+    };
+    checkStandalone();
+    window.matchMedia('(display-mode: standalone)').addEventListener('change', checkStandalone);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+    };
+  }, []);
+
+  const handleInstallPWAClick = async () => {
+    if (!deferredPrompt) {
+      alert("Siga o tutorial visual que abrimos para você instalar em seu computador ou celular!");
+      return;
+    }
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`Resposta do usuário para a instalação: ${outcome}`);
+      setDeferredPrompt(null);
+    } catch (err) {
+      console.error('Erro ao acionar prompt de instalação:', err);
+    }
+  };
 
   // Supabase Integration UI States
   const [showSupabaseModal, setShowSupabaseModal] = useState(false);
@@ -640,6 +685,19 @@ export default function App() {
               </span>
             </button>
 
+            {/* PWA Install Button */}
+            {!isInstalled && (
+              <button 
+                id="btn-header-install-pwa"
+                onClick={() => setShowInstallModal(true)}
+                className="text-xs font-bold py-1.5 px-3 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white rounded-xl flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer pointer-events-auto"
+                title="Instalar Aplicativo no Celular ou Computador"
+              >
+                <Smartphone className="w-3.5 h-3.5 animate-bounce" />
+                <span>Instalar App</span>
+              </button>
+            )}
+
             {/* Botão de reset de simulação */}
             <button 
               id="btn-general-reset-cache"
@@ -1101,6 +1159,185 @@ export default function App() {
                   className="bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs py-2 px-5 rounded-xl cursor-pointer pointer-events-auto transition-colors"
                 >
                   Concluir
+                </button>
+              </div>
+
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de Instalação do PWA */}
+      <AnimatePresence>
+        {showInstallModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] overflow-y-auto" id="pwa-install-modal">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 max-w-lg w-full border border-rose-100 shadow-2xl relative space-y-5 text-left"
+            >
+              {/* Close Button */}
+              <button
+                onClick={() => setShowInstallModal(false)}
+                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full cursor-pointer transition-colors"
+                id="btn-close-pwa-modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600">
+                  <Smartphone className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-900 leading-tight">Instalar Aplicativo</h3>
+                  <p className="text-xs text-slate-500">Tenha o Doce Sabor sempre à mão no computador ou celular</p>
+                </div>
+              </div>
+
+              {/* IFRAME WARNING BANNER */}
+              {window.self !== window.top && (
+                <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2 text-xs">
+                  <div className="flex gap-2 text-amber-850 font-bold">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <span>Atenção: Modo de Prévia Detectado!</span>
+                  </div>
+                  <p className="text-slate-600 leading-relaxed">
+                    Você está visualizando o sistema dentro de uma janela de testes (Iframe). Navegadores como Google Chrome e Safari <strong>bloqueiam a instalação de aplicativos</strong> dentro de frames de visualização.
+                  </p>
+                  <div className="pt-1">
+                    <a
+                      href={window.location.origin}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-2 px-3.5 rounded-xl transition-all cursor-pointer shadow-3xs"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Abrir em Tela Cheia para Instalar
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* NATIVE INSTALLATION PROMPT BUTTON (If available) */}
+              {deferredPrompt ? (
+                <div className="p-4 bg-rose-50/30 border border-rose-100 rounded-2xl space-y-2.5 text-center">
+                  <p className="text-xs text-slate-600 leading-normal">
+                    Seu navegador é totalmente compatível e está pronto para instalar o aplicativo agora mesmo!
+                  </p>
+                  <button
+                    onClick={handleInstallPWAClick}
+                    className="w-full bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white font-extrabold text-xs py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-[1.01] cursor-pointer"
+                  >
+                    <Smartphone className="w-4 h-4 animate-bounce" />
+                    Instalar Aplicativo Agora
+                  </button>
+                </div>
+              ) : (
+                <div className="text-[11px] bg-slate-50 p-3 rounded-2xl border text-slate-500 text-center leading-relaxed">
+                  💡 Se o botão de instalação automática não aparecer, siga as orientações manuais abaixo para o seu dispositivo.
+                </div>
+              )}
+
+              {/* TABS SELECTOR */}
+              <div className="border-b border-slate-100 flex gap-1 p-0.5 bg-slate-50 rounded-xl" id="pwa-tabs-list">
+                {[
+                  { id: 'android', label: 'Celular Android', icon: Smartphone },
+                  { id: 'ios', label: 'iPhone (iOS)', icon: Apple },
+                  { id: 'desktop', label: 'Computador', icon: Monitor }
+                ].map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = installDeviceTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setInstallDeviceTab(tab.id as any)}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                        isActive
+                          ? 'bg-white text-slate-800 shadow-3xs border border-slate-100'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* TUTORIAL CONTENT */}
+              <div className="space-y-4 pt-1">
+                {installDeviceTab === 'android' && (
+                  <div className="space-y-3 text-xs leading-relaxed text-slate-600">
+                    <div className="flex gap-2 items-start">
+                      <span className="bg-rose-100 text-rose-700 font-extrabold w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0">1</span>
+                      <p>Certifique-se de estar usando o navegador <strong>Google Chrome</strong> ou <strong>Microsoft Edge</strong>.</p>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <span className="bg-rose-100 text-rose-700 font-extrabold w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0">2</span>
+                      <p>Toque nos <strong>três pontinhos (⋮)</strong> localizados no canto superior direito do seu navegador.</p>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <span className="bg-rose-100 text-rose-700 font-extrabold w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0">3</span>
+                      <p>Procure e toque na opção <strong>"Instalar aplicativo"</strong> ou <strong>"Adicionar à tela inicial"</strong>.</p>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <span className="bg-rose-100 text-rose-700 font-extrabold w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0">4</span>
+                      <p>Confirme a instalação. O aplicativo aparecerá na sua lista de apps do celular com ícone próprio e carregamento rápido!</p>
+                    </div>
+                  </div>
+                )}
+
+                {installDeviceTab === 'ios' && (
+                  <div className="space-y-3 text-xs leading-relaxed text-slate-600">
+                    <div className="p-3 bg-rose-50/30 border border-rose-100 rounded-xl text-[11px] leading-relaxed text-rose-900 font-medium">
+                      ⚠️ <strong>Nota para iPhone:</strong> A Apple exige que a instalação de PWAs seja feita exclusivamente através do navegador oficial <strong>Safari</strong>.
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <span className="bg-rose-100 text-rose-700 font-extrabold w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0">1</span>
+                      <p>Abra este site utilizando obrigatoriamente o navegador <strong>Safari</strong>.</p>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <span className="bg-rose-100 text-rose-700 font-extrabold w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0">2</span>
+                      <p>Toque no ícone de <strong>Compartilhar</strong> (o quadrado com uma seta apontando para cima na barra inferior do Safari).</p>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <span className="bg-rose-100 text-rose-700 font-extrabold w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0">3</span>
+                      <p>Role a lista de opções para baixo e toque em <strong>"Adicionar à Tela de Início"</strong> (representado por um ícone de mais ➕).</p>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <span className="bg-rose-100 text-rose-700 font-extrabold w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0">4</span>
+                      <p>Dê um nome para o aplicativo se desejar e toque em <strong>Adicionar</strong> no canto superior direito.</p>
+                    </div>
+                  </div>
+                )}
+
+                {installDeviceTab === 'desktop' && (
+                  <div className="space-y-3 text-xs leading-relaxed text-slate-600">
+                    <div className="flex gap-2 items-start">
+                      <span className="bg-rose-100 text-rose-700 font-extrabold w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0">1</span>
+                      <p>Utilize o navegador <strong>Google Chrome</strong> ou <strong>Microsoft Edge</strong> no seu computador.</p>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <span className="bg-rose-100 text-rose-700 font-extrabold w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0">2</span>
+                      <p>Olhe para a <strong>barra de endereços do navegador</strong> (onde fica o link no topo). No lado direito, clique no ícone de <strong>instalar</strong> (parece um monitor com uma setinha para baixo ou um ícone de mais ➕).</p>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <span className="bg-rose-100 text-rose-700 font-extrabold w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0">3</span>
+                      <p>Alternativamente, clique nos <strong>três pontinhos (⋮)</strong> no canto superior direito do Chrome, vá em <strong>"Salvar e compartilhar"</strong> e depois em <strong>"Instalar página como app..."</strong>.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Botão de Fechar */}
+              <div className="pt-2 border-t border-slate-100 flex justify-end">
+                <button
+                  onClick={() => setShowInstallModal(false)}
+                  className="bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs py-2 px-5 rounded-xl cursor-pointer pointer-events-auto transition-colors"
+                >
+                  Entendi
                 </button>
               </div>
 
