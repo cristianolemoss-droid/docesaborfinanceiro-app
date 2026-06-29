@@ -68,6 +68,7 @@ export default function Financeiro({
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const isAuthorized = userRole === 'admin' || userRole === 'collaborator' || userRole === 'developer';
 
   // Report Modal States
   const [showReportModal, setShowReportModal] = useState(false);
@@ -371,9 +372,12 @@ export default function Financeiro({
     // Ordenado por data decrescente (mais recente primeiro)
     const sorted = [...transactions].sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
     
-    if (userRole === 'collaborator') {
-      const todayStr = getOffsetDateString(0);
-      return sorted.filter(t => t.data === todayStr && t.tipo === 'receita' && t.categoria === 'Vendas PDV');
+    if (userRole) {
+      return sorted.filter(t => {
+        const matchType = filterType === 'todos' || t.tipo === filterType;
+        const matchCat = selectedCategory === 'Todas' || t.categoria === selectedCategory;
+        return matchType && matchCat;
+      });
     }
 
     if (userRole === null) {

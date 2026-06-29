@@ -66,7 +66,10 @@ import {
   deleteSingleSale,
   deleteTransactionsByOrigin,
   fetchProfilesFromSupabase,
+  registerProfileInSupabase,
+  deleteProfileFromSupabase,
   getActiveTenantId,
+  setActiveTenantId,
   SUPABASE_SQL_SETUP_CODE 
 } from './utils/supabaseDb';
 
@@ -98,6 +101,12 @@ export default function App() {
     }
     return cached;
   });
+
+  // Helper for tenant-specific storage keys
+  const getTenantStorageKey = (baseKey: string) => {
+    const tenantId = localStorage.getItem('supabase_active_tenant_id') || 'c_default';
+    return `${baseKey}_${tenantId}`;
+  };
 
   const handleUpdateDevPassword = (newPass: string) => {
     setDevPassword(newPass);
@@ -196,6 +205,9 @@ export default function App() {
         localStorage.setItem('bakery_users', JSON.stringify(INITIAL_USERS));
       }
 
+      // Load tenant-specific data
+      // (Moved to after session restore to ensure correct tenant ID is used)
+      
       // If Supabase is configured, fetch profiles right away to enrich our users list
       const configured = isSupabaseConfigured();
       if (configured) {
@@ -211,8 +223,8 @@ export default function App() {
               tenantId: p.tenant_id
             }));
 
-            // Merge with local/INITIAL_USERS so they don't overwrite each other
-            const mergedUsers = [...INITIAL_USERS];
+            // Merge with local activeUsers list so they don't overwrite each other
+            const mergedUsers = [...activeUsers];
             mappedDbUsers.forEach(du => {
               const existingIdx = mergedUsers.findIndex(mu => mu.id === du.id || mu.username === du.username);
               if (existingIdx >= 0) {
@@ -244,6 +256,22 @@ export default function App() {
         }
       }
 
+      // Re-load tenant-specific data (now that tenant ID is set from session)
+      const cachedInventory = localStorage.getItem(getTenantStorageKey('bakery_inventory'));
+      setInventory(cachedInventory ? JSON.parse(cachedInventory) : INITIAL_INVENTORY);
+      
+      const cachedLosses = localStorage.getItem(getTenantStorageKey('bakery_losses'));
+      setLossRecords(cachedLosses ? JSON.parse(cachedLosses) : INITIAL_LOSS_RECORDS);
+      
+      const cachedTransactions = localStorage.getItem(getTenantStorageKey('bakery_transactions'));
+      setTransactions(cachedTransactions ? JSON.parse(cachedTransactions) : INITIAL_TRANSACTIONS);
+      
+      const cachedSales = localStorage.getItem(getTenantStorageKey('bakery_sales'));
+      setSales(cachedSales ? JSON.parse(cachedSales) : INITIAL_SALES);
+      
+      const cachedOrders = localStorage.getItem(getTenantStorageKey('bakery_open_orders'));
+      setOpenOrders(cachedOrders ? JSON.parse(cachedOrders) : []);
+
       if (configured) {
         setSupabaseLogs('Supabase detectado! Tentando carregar tabelas de nuvem...');
         const res = await downloadAllFromSupabase();
@@ -256,10 +284,10 @@ export default function App() {
           setSupabaseLogs('Conectado com sucesso! Dados carregados da nuvem Supabase em tempo real.');
           
           // Sync LocalStorage for offline speed and buffer redudancy
-          localStorage.setItem('bakery_inventory', JSON.stringify(res.inventory));
-          localStorage.setItem('bakery_losses', JSON.stringify(res.lossRecords));
-          localStorage.setItem('bakery_transactions', JSON.stringify(res.transactions));
-          localStorage.setItem('bakery_sales', JSON.stringify(res.sales));
+          localStorage.setItem(getTenantStorageKey('bakery_inventory'), JSON.stringify(res.inventory));
+          localStorage.setItem(getTenantStorageKey('bakery_losses'), JSON.stringify(res.lossRecords));
+          localStorage.setItem(getTenantStorageKey('bakery_transactions'), JSON.stringify(res.transactions));
+          localStorage.setItem(getTenantStorageKey('bakery_sales'), JSON.stringify(res.sales));
           setIsLoaded(true);
           return;
         } else {
@@ -271,31 +299,6 @@ export default function App() {
         setSupabaseLogs('Modo Offline Ativo. Crie chaves de conexão no settings para sincronizar com Supabase!');
       }
 
-      // LocalStorage Fallback (Default or existing offline cache)
-      const cachedInventory = localStorage.getItem('bakery_inventory');
-      const cachedLosses = localStorage.getItem('bakery_losses');
-      const cachedTransactions = localStorage.getItem('bakery_transactions');
-      const cachedSales = localStorage.getItem('bakery_sales');
-      const cachedOpenOrders = localStorage.getItem('bakery_open_orders');
-
-      if (cachedInventory && cachedLosses && cachedTransactions && cachedSales) {
-        setInventory(JSON.parse(cachedInventory));
-        setLossRecords(JSON.parse(cachedLosses));
-        setTransactions(JSON.parse(cachedTransactions));
-        setSales(JSON.parse(cachedSales));
-      } else {
-        // First run initialization
-        setInventory(INITIAL_INVENTORY);
-        setLossRecords(INITIAL_LOSS_RECORDS);
-        setTransactions(INITIAL_TRANSACTIONS);
-        setSales(INITIAL_SALES);
-      }
-
-      if (cachedOpenOrders) {
-        setOpenOrders(JSON.parse(cachedOpenOrders));
-      } else {
-        setOpenOrders([]);
-      }
       setIsLoaded(true);
     }
 
@@ -305,13 +308,16 @@ export default function App() {
   // Sync to LocalStorage whenever state changes
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem('bakery_inventory', JSON.stringify(inventory));
-    localStorage.setItem('bakery_losses', JSON.stringify(lossRecords));
-    localStorage.setItem('bakery_transactions', JSON.stringify(transactions));
-    localStorage.setItem('bakery_sales', JSON.stringify(sales));
+    localStorage.setItem(getTenantStorageKey('bakery_inventory'), JSON.stringify(inventory));
+    localStorage.setItem(getTenantStorageKey('bakery_losses'), JSON.stringify(lossRecords));
+    localStorage.setItem(getTenantStorageKey('bakery_transactions'), JSON.stringify(transactions));
+    localStorage.setItem(getTenantStorageKey('bakery_sales'), JSON.stringify(sales));
+    
+    // Global data
     localStorage.setItem('bakery_companies', JSON.stringify(companies));
     localStorage.setItem('bakery_users', JSON.stringify(users));
-    localStorage.setItem('bakery_open_orders', JSON.stringify(openOrders));
+    
+    localStorage.setItem(getTenantStorageKey('bakery_open_orders'), JSON.stringify(openOrders));
   }, [inventory, lossRecords, transactions, sales, companies, users, openOrders, isLoaded]);
 
   // Derived active company
@@ -319,35 +325,53 @@ export default function App() {
 
   // Refresh data for the active tenant dynamically
   const refreshDataForActiveTenant = async () => {
-    if (!isSupabaseConfigured()) return;
-    setIsSyncing(true);
-    setSyncStatusText('Carregando dados do Cliente...');
-    try {
-      const res = await downloadAllFromSupabase();
-      if (res.success && res.inventory && res.lossRecords && res.sales && res.transactions) {
-        setInventory(res.inventory);
-        setLossRecords(res.lossRecords);
-        setTransactions(res.transactions);
-        setSales(res.sales);
-        setSupabaseConnected(true);
-        setSupabaseLogs(`Conectado! Dados carregados para o Cliente [${getActiveTenantId()}] em tempo real.`);
-        
-        // Save to cache
-        localStorage.setItem('bakery_inventory', JSON.stringify(res.inventory));
-        localStorage.setItem('bakery_losses', JSON.stringify(res.lossRecords));
-        localStorage.setItem('bakery_transactions', JSON.stringify(res.transactions));
-        localStorage.setItem('bakery_sales', JSON.stringify(res.sales));
-      } else {
-        console.error('Falha ao baixar dados do inquilino:', res.error);
-        setSupabaseLogs(`Erro ao carregar dados do Cliente: ${res.error}`);
+    // 1. Try to load from Supabase if configured
+    if (isSupabaseConfigured()) {
+      setIsSyncing(true);
+      setSyncStatusText('Carregando dados do Cliente...');
+      try {
+        const res = await downloadAllFromSupabase();
+        if (res.success && res.inventory && res.lossRecords && res.sales && res.transactions) {
+          setInventory(res.inventory);
+          setLossRecords(res.lossRecords);
+          setTransactions(res.transactions);
+          setSales(res.sales);
+          setSupabaseConnected(true);
+          setSupabaseLogs(`Conectado! Dados carregados para o Cliente [${getActiveTenantId()}] em tempo real.`);
+          
+          // Save to cache
+          localStorage.setItem(getTenantStorageKey('bakery_inventory'), JSON.stringify(res.inventory));
+          localStorage.setItem(getTenantStorageKey('bakery_losses'), JSON.stringify(res.lossRecords));
+          localStorage.setItem(getTenantStorageKey('bakery_transactions'), JSON.stringify(res.transactions));
+          localStorage.setItem(getTenantStorageKey('bakery_sales'), JSON.stringify(res.sales));
+        } else {
+          console.error('Falha ao baixar dados do inquilino:', res.error);
+          setSupabaseLogs(`Erro ao carregar dados do Cliente: ${res.error}`);
+        }
+      } catch (e: any) {
+        console.error(e);
+        setSupabaseLogs(`Erro crítico de sincronia: ${e.message}`);
+      } finally {
+        setIsSyncing(false);
+        setSyncStatusText(null);
       }
-    } catch (e: any) {
-      console.error(e);
-      setSupabaseLogs(`Erro crítico de sincronia: ${e.message}`);
-    } finally {
-      setIsSyncing(false);
-      setSyncStatusText(null);
     }
+
+    // 2. Load from LocalStorage (as fallback or primary in offline mode)
+    const cachedInventory = localStorage.getItem(getTenantStorageKey('bakery_inventory'));
+    setInventory(cachedInventory ? JSON.parse(cachedInventory) : INITIAL_INVENTORY);
+    
+    const cachedLosses = localStorage.getItem(getTenantStorageKey('bakery_losses'));
+    setLossRecords(cachedLosses ? JSON.parse(cachedLosses) : INITIAL_LOSS_RECORDS);
+    
+    const cachedTransactions = localStorage.getItem(getTenantStorageKey('bakery_transactions'));
+    setTransactions(cachedTransactions ? JSON.parse(cachedTransactions) : INITIAL_TRANSACTIONS);
+    
+    const cachedSales = localStorage.getItem(getTenantStorageKey('bakery_sales'));
+    setSales(cachedSales ? JSON.parse(cachedSales) : INITIAL_SALES);
+    
+    const cachedOrders = localStorage.getItem(getTenantStorageKey('bakery_open_orders'));
+    setOpenOrders(cachedOrders ? JSON.parse(cachedOrders) : []);
   };
 
   // Handle login success and persist session
@@ -386,11 +410,11 @@ export default function App() {
     setOpenOrders([]);
     
     // Clear local storage cache
-    localStorage.removeItem('bakery_inventory');
-    localStorage.removeItem('bakery_losses');
-    localStorage.removeItem('bakery_transactions');
-    localStorage.removeItem('bakery_sales');
-    localStorage.removeItem('bakery_open_orders');
+    localStorage.removeItem(getTenantStorageKey('bakery_inventory'));
+    localStorage.removeItem(getTenantStorageKey('bakery_losses'));
+    localStorage.removeItem(getTenantStorageKey('bakery_transactions'));
+    localStorage.removeItem(getTenantStorageKey('bakery_sales'));
+    localStorage.removeItem(getTenantStorageKey('bakery_open_orders'));
     
     setSupabaseLogs('Sessão encerrada por segurança. Faça login com outro usuário.');
   };
@@ -442,15 +466,49 @@ export default function App() {
 
   // USER CRUD HANDLERS
   const handleAddUser = (user: UserAccount) => {
-    setUsers(prev => [...prev, user]);
+    const updatedUser = {
+      ...user,
+      tenantId: user.tenantId || getActiveTenantId()
+    };
+    setUsers(prev => [...prev, updatedUser]);
+
+    if (isSupabaseConfigured() && supabaseConnected) {
+      registerProfileInSupabase(
+        updatedUser.id,
+        updatedUser.username,
+        updatedUser.nome,
+        updatedUser.role,
+        updatedUser.tenantId,
+        updatedUser.senha
+      ).catch(err => console.error('Erro ao sincronizar novo usuário com o Supabase:', err));
+    }
   };
 
   const handleUpdateUser = (user: UserAccount) => {
-    setUsers(prev => prev.map(u => u.id === user.id ? user : u));
+    const updatedUser = {
+      ...user,
+      tenantId: user.tenantId || getActiveTenantId()
+    };
+    setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
+
+    if (isSupabaseConfigured() && supabaseConnected) {
+      registerProfileInSupabase(
+        updatedUser.id,
+        updatedUser.username,
+        updatedUser.nome,
+        updatedUser.role,
+        updatedUser.tenantId,
+        updatedUser.senha
+      ).catch(err => console.error('Erro ao sincronizar atualização de usuário com o Supabase:', err));
+    }
   };
 
   const handleDeleteUser = (id: string) => {
     setUsers(prev => prev.filter(u => u.id !== id));
+
+    if (isSupabaseConfigured() && supabaseConnected) {
+      deleteProfileFromSupabase(id).catch(err => console.error('Erro ao excluir usuário no Supabase:', err));
+    }
   };
 
   // CALLBACK: Venda finalizada no PDV
@@ -641,7 +699,7 @@ export default function App() {
                   </span>
                 ) : (
                   <span className="flex items-center gap-1 text-slate-700">
-                    <span className="text-[11.5px]">🧑‍🍳 Colaborador</span>
+                    <span className="text-[11.5px]">🧑‍🍳 {currentUser?.nome || 'Colaborador'}</span>
                   </span>
                 )}
                 <button
@@ -684,19 +742,6 @@ export default function App() {
                 {supabaseConnected ? 'Supabase Conectado' : 'Supabase (Nuvem)'}
               </span>
             </button>
-
-            {/* PWA Install Button */}
-            {!isInstalled && (
-              <button 
-                id="btn-header-install-pwa"
-                onClick={() => setShowInstallModal(true)}
-                className="text-xs font-bold py-1.5 px-3 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white rounded-xl flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer pointer-events-auto"
-                title="Instalar Aplicativo no Celular ou Computador"
-              >
-                <Smartphone className="w-3.5 h-3.5 animate-bounce" />
-                <span>Instalar App</span>
-              </button>
-            )}
 
             {/* Botão de reset de simulação */}
             <button 
@@ -772,43 +817,84 @@ export default function App() {
                   companyName={activeCompany.nomeFantasia}
                   users={users}
                   devPassword={devPassword}
+                  tenantId={getActiveTenantId()}
+                  onAddUser={handleAddUser}
                 />
               )
             )}
 
             {activeTab === 'pdv' && (
-              <PDV 
-                inventory={inventory}
-                onCompleteSale={handleCompleteSale}
-                activeCompany={activeCompany}
-                sales={sales}
-                onCancelSale={handleCancelSale}
-                users={users}
-                openOrders={openOrders}
-                onUpdateOpenOrders={setOpenOrders}
-              />
+              userRole ? (
+                <PDV 
+                  inventory={inventory}
+                  onCompleteSale={handleCompleteSale}
+                  activeCompany={activeCompany}
+                  sales={sales}
+                  onCancelSale={handleCancelSale}
+                  users={users}
+                  openOrders={openOrders}
+                  onUpdateOpenOrders={setOpenOrders}
+                />
+              ) : (
+                <LockScreen 
+                  requiredRole="any"
+                  onLogin={handleLoginSuccess}
+                  onNavigateToPublic={() => setActiveTab('pdv')}
+                  companyName={activeCompany.nomeFantasia}
+                  users={users}
+                  devPassword={devPassword}
+                  tenantId={getActiveTenantId()}
+                  onAddUser={handleAddUser}
+                />
+              )
             )}
 
             {activeTab === 'estoque' && (
-              <Estoque 
-                inventory={inventory}
-                onUpdateInventory={handleUpdateInventory}
-                onAddLossRecord={handleAddLossRecord}
-              />
+              userRole ? (
+                <Estoque 
+                  inventory={inventory}
+                  onUpdateInventory={handleUpdateInventory}
+                  onAddLossRecord={handleAddLossRecord}
+                />
+              ) : (
+                <LockScreen 
+                  requiredRole="any"
+                  onLogin={handleLoginSuccess}
+                  onNavigateToPublic={() => setActiveTab('pdv')}
+                  companyName={activeCompany.nomeFantasia}
+                  users={users}
+                  devPassword={devPassword}
+                  tenantId={getActiveTenantId()}
+                  onAddUser={handleAddUser}
+                />
+              )
             )}
 
             {activeTab === 'financeiro' && (
-              <Financeiro 
-                transactions={transactions}
-                onAddTransaction={handleAddTransactionManual}
-                userRole={userRole}
-                lossRecords={lossRecords}
-                sales={sales}
-                users={users}
-                onLogin={handleLoginSuccess}
-                devPassword={devPassword}
-                companyName={activeCompany?.nomeFantasia}
-              />
+              userRole ? (
+                <Financeiro 
+                  transactions={transactions}
+                  onAddTransaction={handleAddTransactionManual}
+                  userRole={userRole}
+                  lossRecords={lossRecords}
+                  sales={sales}
+                  users={users}
+                  onLogin={handleLoginSuccess}
+                  devPassword={devPassword}
+                  companyName={activeCompany?.nomeFantasia}
+                />
+              ) : (
+                <LockScreen 
+                  requiredRole="any"
+                  onLogin={handleLoginSuccess}
+                  onNavigateToPublic={() => setActiveTab('pdv')}
+                  companyName={activeCompany.nomeFantasia}
+                  users={users}
+                  devPassword={devPassword}
+                  tenantId={getActiveTenantId()}
+                  onAddUser={handleAddUser}
+                />
+              )
             )}
 
             {activeTab === 'configuracao' && (
@@ -829,6 +915,7 @@ export default function App() {
                       ...c,
                       ativo: c.id === id
                     })));
+                    setActiveTenantId(id);
                   }}
                   users={users}
                   onAddUser={handleAddUser}
@@ -836,23 +923,18 @@ export default function App() {
                   onDeleteUser={handleDeleteUser}
                   devPassword={devPassword}
                   onUpdateDevPassword={handleUpdateDevPassword}
+                  onShowInstallModal={() => setShowInstallModal(true)}
                 />
               ) : (
-                <DeveloperLockScreen 
-                  onLogin={() => {
-                    setUserRole('developer');
-                    setCurrentUser({
-                      id: 'u_developer',
-                      username: 'desenvolvedor',
-                      nome: 'Desenvolvedor do Sistema',
-                      senha: devPassword,
-                      role: 'developer'
-                    });
-                    localStorage.setItem('logged_user_id', 'u_developer');
-                    localStorage.setItem('logged_user_role', 'developer');
-                  }}
+                <LockScreen 
+                  requiredRole="admin"
+                  onLogin={handleLoginSuccess}
                   onNavigateToPublic={() => setActiveTab('pdv')}
+                  companyName={activeCompany.nomeFantasia}
+                  users={users}
                   devPassword={devPassword}
+                  tenantId={getActiveTenantId()}
+                  onAddUser={handleAddUser}
                 />
               )
             )}

@@ -23,7 +23,7 @@ export function getActiveTenantId(): string {
       }
     }
   }
-  return localStorage.getItem('supabase_active_tenant_id') || 'tenant_default';
+  return localStorage.getItem('supabase_active_tenant_id') || 'c_default';
 }
 
 export function setActiveTenantId(id: string) {
@@ -514,6 +514,23 @@ export async function registerProfileInSupabase(
     return { success: true };
   } catch (err: any) {
     console.error('Erro ao registrar perfil no Supabase:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Delete a Profile from Supabase
+ */
+export async function deleteProfileFromSupabase(id: string): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured() || !supabase) {
+    return { success: false, error: 'Supabase não está configurado.' };
+  }
+  try {
+    const { error } = await supabase.from('perfis').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+    return { success: true };
+  } catch (err: any) {
+    console.error('Erro ao deletar perfil no Supabase:', err);
     return { success: false, error: err.message };
   }
 }

@@ -17,7 +17,8 @@ import {
   CreditCard,
   User,
   Shield,
-  Key
+  Key,
+  Smartphone
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -35,6 +36,7 @@ interface ConfiguracaoProps {
 
   devPassword?: string;
   onUpdateDevPassword?: (newPass: string) => void;
+  onShowInstallModal: () => void;
 }
 
 export default function Configuracao({
@@ -134,7 +136,10 @@ export default function Configuracao({
       nome: userNome.trim(),
       username: cleanUsername,
       senha: userSenha.trim(),
-      role: userRole
+      role: userRole,
+      tenantId: userEditingId 
+        ? (users.find(u => u.id === userEditingId)?.tenantId || activeCompany?.id || 'c_default') 
+        : (activeCompany?.id || 'c_default')
     };
 
     if (userEditingId) {
@@ -218,42 +223,69 @@ export default function Configuracao({
     resetForm();
   };
 
+  // Filtro de usuários por cliente ativo
+  const [filterByActiveCompany, setFilterByActiveCompany] = useState(true);
+
   const activeCompany = companies.find(c => c.ativo);
+
+  const displayedUsers = users.filter(u => {
+    if (!filterByActiveCompany) return true;
+    const activeId = activeCompany?.id || 'c_default';
+    if (!u.tenantId) {
+      // Usuários padrão do sistema ou sem tenant são exibidos em todos os clientes
+      return activeId === 'c_default' || u.id === 'u_admin' || u.id === 'u_colab';
+    }
+    return u.tenantId === activeId;
+  });
 
   return (
     <div className="space-y-6" id="config-panel-wrapper">
       {/* Sub-header navigation tabs */}
-      <div className="flex border-b border-rose-100 pb-1 gap-2 overflow-x-auto" id="toggle-config-subtabs">
-        <button
-          onClick={() => setConfigSection('empresa')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
-            configSection === 'empresa'
-              ? 'bg-rose-500 text-white shadow-xs'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <Building className="w-4 h-4" /> Dados da Empresa
-        </button>
-        <button
-          onClick={() => setConfigSection('usuarios')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
-            configSection === 'usuarios'
-              ? 'bg-rose-500 text-white shadow-xs'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <User className="w-4 h-4" /> Usuários e Senhas
-        </button>
-        <button
-          onClick={() => setConfigSection('desenvolvedor')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
-            configSection === 'desenvolvedor'
-              ? 'bg-rose-500 text-white shadow-xs'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <Shield className="w-4 h-4" /> Senha do Desenvolvedor
-        </button>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-rose-100 pb-2 gap-3" id="toggle-config-subtabs-container">
+        <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0" id="toggle-config-subtabs">
+          <button
+            onClick={() => setConfigSection('empresa')}
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+              configSection === 'empresa'
+                ? 'bg-rose-500 text-white shadow-xs'
+                : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+            }`}
+          >
+            <Building className="w-4 h-4" /> Dados da Empresa
+          </button>
+          <button
+            onClick={() => setConfigSection('usuarios')}
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+              configSection === 'usuarios'
+                ? 'bg-rose-500 text-white shadow-xs'
+                : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+            }`}
+          >
+            <User className="w-4 h-4" /> Usuários e Senhas
+          </button>
+          <button
+            onClick={() => setConfigSection('desenvolvedor')}
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+              configSection === 'desenvolvedor'
+                ? 'bg-rose-500 text-white shadow-xs'
+                : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+            }`}
+          >
+            <Shield className="w-4 h-4" /> Senha do Desenvolvedor
+          </button>
+        </div>
+
+        {activeCompany && (
+          <div className="inline-flex items-center gap-2 bg-rose-50 border border-rose-150 px-3.5 py-1.5 rounded-xl shadow-3xs shrink-0 self-start md:self-auto animate-fade-in">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-[11px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1.5">
+              Cliente Ativo: <strong className="text-rose-600 font-extrabold">{activeCompany.nomeFantasia}</strong>
+            </span>
+          </div>
+        )}
       </div>
 
       {configSection === 'empresa' && (
@@ -599,6 +631,28 @@ export default function Configuracao({
             )}
           </div>
 
+          {activeCompany && (
+            <div className="bg-rose-50/40 border border-rose-150 p-4 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 font-sans shadow-3xs animate-fade-in" id="active-tenant-users-vault-badge">
+              <div className="flex items-center gap-2.5">
+                <div className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-black tracking-wider text-rose-500 block">Cofre de Segurança • Filtro Ativo</span>
+                  <span className="text-sm font-black text-slate-850 flex items-center gap-1.5">
+                    🏢 {activeCompany.nomeFantasia}
+                    <span className="text-[10px] font-mono text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md font-bold">Inquilino ID: {activeCompany.id}</span>
+                  </span>
+                </div>
+              </div>
+              <div className="bg-rose-100/40 border border-rose-200/40 rounded-xl py-1.5 px-3 text-rose-850 text-xs font-bold flex items-center gap-1.5 self-start md:self-auto">
+                <Shield className="w-4 h-4 text-rose-600 shrink-0 animate-pulse" />
+                <span>O cofre está exibindo e gravando senhas exclusivamente para este cliente.</span>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start font-sans">
             {/* Left Side: Dynamic User Form */}
             {isEditingUser ? (
@@ -686,6 +740,28 @@ export default function Configuracao({
                     </div>
                   </div>
 
+                  {/* Cliente / Tenant (Inquilino) */}
+                  <div className="space-y-1 bg-slate-50/50 p-3 rounded-2xl border border-slate-150/40">
+                    <label className="text-xs font-bold text-slate-600 block">Vincular ao Cliente <span className="text-red-500">*</span></label>
+                    <div className="relative">
+                      <select
+                        disabled // Força a vinculação automática com o cliente ativo no momento para evitar inconsistência
+                        className="w-full bg-slate-100 border border-slate-250/50 rounded-xl py-2 px-3 text-xs font-semibold text-slate-500 cursor-not-allowed appearance-none"
+                        value={activeCompany?.id || 'c_default'}
+                      >
+                        <option value={activeCompany?.id || 'c_default'}>
+                          🏢 {activeCompany?.nomeFantasia || 'Cliente Padrão'}
+                        </option>
+                      </select>
+                      <span className="absolute right-3 top-2 text-[9px] font-black uppercase text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-150">
+                        Vinculação Automática
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-tight">
+                      Este novo operador será cadastrado e associado de forma permanente ao cliente ativo no momento.
+                    </p>
+                  </div>
+
                   {/* Submit panel */}
                   <div className="flex gap-2 justify-end pt-3 border-t">
                     <button
@@ -716,72 +792,115 @@ export default function Configuracao({
 
             {/* Right Side: List of Users */}
             <div className="lg:col-span-5 space-y-4">
-              <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider">Usuários Registrados ({users.length})</h3>
-              <div className="space-y-3" id="users-deck">
-                {users.map(u => (
-                  <div 
-                    key={u.id}
-                    className="p-4 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50/50 transition-all relative overflow-hidden"
-                  >
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-900 font-serif flex items-center gap-1.5">
-                            <Shield className={`w-4 h-4 ${u.role === 'admin' ? 'text-amber-500' : 'text-blue-500'}`} />
-                            {u.nome}
-                          </h4>
-                          <span className={`text-[10px] mt-1 inline-block uppercase font-black px-1.5 py-0.5 rounded-md ${
-                            u.role === 'admin' 
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200' 
-                              : 'bg-blue-50 text-blue-800 border border-blue-200'
-                          }`}>
-                            {u.role === 'admin' ? 'Admin' : 'Colaborador'}
-                          </span>
-                        </div>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider">
+                  {filterByActiveCompany ? 'Usuários do Cliente' : 'Todos os Usuários'} ({displayedUsers.length})
+                </h3>
+                <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={filterByActiveCompany}
+                    onChange={(e) => setFilterByActiveCompany(e.target.checked)}
+                    className="rounded-sm border-slate-300 text-rose-500 focus:ring-rose-500 cursor-pointer h-3.5 w-3.5"
+                  />
+                  Filtrar Ativo
+                </label>
+              </div>
 
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleEditUserClick(u)}
-                            className="p-1.5 bg-slate-50 hover:bg-slate-200 text-slate-500 hover:text-slate-850 rounded-lg transition-colors cursor-pointer pointer-events-auto"
-                            title="Editar Usuário"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
+              {displayedUsers.length === 0 ? (
+                <div className="p-6 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-center text-slate-500 space-y-3">
+                  <div>
+                    <p className="text-xs font-bold">Nenhum usuário cadastrado.</p>
+                    <p className="text-[10px] text-slate-400 mt-1 leading-normal">
+                      Todos os novos usuários cadastrados serão associados automaticamente a <strong>{activeCompany?.nomeFantasia || 'este cliente'}</strong>.
+                    </p>
+                  </div>
+                  {!isEditingUser && (
+                    <button
+                      onClick={() => {
+                        resetUserForm();
+                        setIsEditingUser(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 bg-rose-500 hover:bg-rose-600 text-white font-bold text-[10px] py-1.5 px-3 rounded-lg transition-all shadow-3xs cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Criar Primeiro Usuário
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3" id="users-deck">
+                  {displayedUsers.map(u => (
+                    <div 
+                      key={u.id}
+                      className="p-4 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50/50 transition-all relative overflow-hidden"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-900 font-serif flex items-center gap-1.5">
+                              <Shield className={`w-4 h-4 ${u.role === 'admin' ? 'text-amber-500' : 'text-blue-500'}`} />
+                              {u.nome}
+                            </h4>
+                            <div className="flex flex-wrap gap-1.5 mt-1">
+                              <span className={`text-[10px] uppercase font-black px-1.5 py-0.5 rounded-md ${
+                                u.role === 'admin' 
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                                  : 'bg-blue-50 text-blue-800 border border-blue-200'
+                              }`}>
+                                {u.role === 'admin' ? 'Admin' : 'Colaborador'}
+                              </span>
+                              {u.tenantId && (
+                                <span className="text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-150 px-1.5 py-0.5 rounded-md">
+                                  {companies.find(c => c.id === u.tenantId)?.nomeFantasia || u.tenantId}
+                                </span>
+                              )}
+                            </div>
+                          </div>
 
-                          {users.length > 2 && ( // Garante que nunca delete todos os usuários e mantenha os perfis funcionais
+                          <div className="flex items-center gap-1">
                             <button
-                              onClick={() => {
-                                if (u.id === 'u_admin') {
-                                  alert('⚠️ O usuário de Administrador Padrão não pode ser excluído por razões de auditoria.');
-                                  return;
-                                }
-                                if (window.confirm(`Gostaria de excluir permanentemente o cadastro do usuário "${u.nome}"?`)) {
-                                  onDeleteUser(u.id);
-                                }
-                              }}
-                              className="p-1.5 bg-slate-50 hover:bg-rose-100 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer pointer-events-auto"
-                              title="Excluir Usuário"
+                              onClick={() => handleEditUserClick(u)}
+                              className="p-1.5 bg-slate-50 hover:bg-slate-200 text-slate-500 hover:text-slate-850 rounded-lg transition-colors cursor-pointer pointer-events-auto"
+                              title="Editar Usuário"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Edit3 className="w-3.5 h-3.5" />
                             </button>
-                          )}
-                        </div>
-                      </div>
 
-                      <div className="border-t border-dashed border-slate-100 pt-2 text-[11px] space-y-1 font-medium text-slate-600 leading-normal">
-                        <div className="flex items-center gap-1.5">
-                          <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span><strong>Login:</strong> <span className="font-mono bg-slate-100 px-1 py-0.2 rounded-sm">{u.username}</span></span>
+                            {users.length > 2 && ( // Garante que nunca delete todos os usuários e mantenha os perfis funcionais
+                              <button
+                                onClick={() => {
+                                  if (u.id === 'u_admin') {
+                                    alert('⚠️ O usuário de Administrador Padrão não pode ser excluído por razões de auditoria.');
+                                    return;
+                                  }
+                                  if (window.confirm(`Gostaria de excluir permanentemente o cadastro do usuário "${u.nome}"?`)) {
+                                    onDeleteUser(u.id);
+                                  }
+                                }}
+                                className="p-1.5 bg-slate-50 hover:bg-rose-100 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer pointer-events-auto"
+                                title="Excluir Usuário"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <Key className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span><strong>Senha:</strong> <span className="font-mono bg-slate-100 px-1 py-0.2 rounded-sm">{u.senha}</span></span>
+
+                        <div className="border-t border-dashed border-slate-100 pt-2 text-[11px] space-y-1 font-medium text-slate-600 leading-normal">
+                          <div className="flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span><strong>Login:</strong> <span className="font-mono bg-slate-100 px-1 py-0.2 rounded-sm">{u.username}</span></span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Key className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span><strong>Senha:</strong> <span className="font-mono bg-slate-100 px-1 py-0.2 rounded-sm">{u.senha}</span></span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -789,14 +908,22 @@ export default function Configuracao({
 
       {configSection === 'desenvolvedor' && (
         <div className="bg-white p-6 rounded-3xl border border-rose-100 shadow-xs max-w-2xl space-y-6 font-sans">
-          <div className="flex items-center gap-3 border-b pb-4">
-            <div className="p-3 bg-rose-50 text-rose-500 rounded-xl">
-              <Shield className="w-5 h-5 animate-pulse" />
+          <div className="flex items-center justify-between gap-3 border-b pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-rose-50 text-rose-500 rounded-xl">
+                <Shield className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 font-serif">Senha de Desenvolvedor</h3>
+                <p className="text-xs text-slate-500">Altere a senha que dá acesso total e irrestrito a todo o sistema, sobrepassando restrições.</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-900 font-serif">Senha de Desenvolvedor</h3>
-              <p className="text-xs text-slate-500">Altere a senha que dá acesso total e irrestrito a todo o sistema, sobrepassando restrições.</p>
-            </div>
+            <button
+              onClick={onShowInstallModal}
+              className="px-4 py-2 bg-rose-100 hover:bg-rose-200 text-rose-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition shadow-sm pointer-events-auto cursor-pointer"
+            >
+              <Smartphone className="w-4 h-4" /> Instalar App
+            </button>
           </div>
 
           {devPassSuccessMsg && (

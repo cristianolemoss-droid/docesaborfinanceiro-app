@@ -21,7 +21,8 @@ import {
   fetchProfilesFromSupabase,
   getActiveTenantId,
   setActiveTenantId,
-  deleteTenantFromSupabase
+  deleteTenantFromSupabase,
+  deleteProfileFromSupabase
 } from '../utils/supabaseDb';
 
 interface MultiTenantManagerProps {
@@ -64,8 +65,11 @@ export default function MultiTenantManager({ onAddUserLocal, users, supabaseConn
       setTenants(tList);
       setProfiles(pList);
 
-      // Pre-select first tenant in form if available
-      if (tList.length > 0) {
+      // Pre-select active tenant in form if available
+      const currentActive = getActiveTenantId();
+      if (tList.some(t => t.id === currentActive)) {
+        setNewProfileTenantId(currentActive);
+      } else if (tList.length > 0) {
         setNewProfileTenantId(tList[0].id);
       }
     } catch (e) {
@@ -141,6 +145,27 @@ export default function MultiTenantManager({ onAddUserLocal, users, supabaseConn
       }
     } else {
       alert(`❌ Erro ao excluir cliente: ${res.error || 'Erro desconhecido'}`);
+    }
+  };
+
+  const handleDeleteProfile = async (profileId: string, profileName: string) => {
+    if (profileId === 'u_admin' || profileId === 'u_colab') {
+      alert('⚠️ Usuários padrão do sistema não podem ser excluídos por razões de segurança.');
+      return;
+    }
+    if (!window.confirm(`⚠️ Tem certeza de que deseja EXCLUIR o usuário "${profileName}" do Supabase?`)) {
+      return;
+    }
+
+    setLoading(true);
+    const res = await deleteProfileFromSupabase(profileId);
+    setLoading(false);
+
+    if (res.success) {
+      alert(`✅ Usuário "${profileName}" excluído do Supabase com sucesso!`);
+      loadData();
+    } else {
+      alert(`❌ Erro ao excluir usuário: ${res.error || 'Erro desconhecido'}`);
     }
   };
 
@@ -513,6 +538,68 @@ NOTIFY pgrst, 'reload schema';`}
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Profiles list table */}
+      {supabaseConnected && profiles.length > 0 && (
+        <div className="space-y-2 pt-1 border-t border-rose-100">
+          <h5 className="text-[11px] font-extrabold uppercase text-slate-450 tracking-wider flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5 text-slate-500" />
+            Usuários / Perfis do Supabase ({profiles.length})
+          </h5>
+          <div className="overflow-x-auto rounded-xl border border-slate-150">
+            <table className="w-full text-left text-[11px] font-sans">
+              <thead className="bg-slate-100 text-slate-600 uppercase font-black tracking-wide border-b border-slate-200">
+                <tr>
+                  <th className="p-2">Nome</th>
+                  <th className="p-2">Login (Username)</th>
+                  <th className="p-2">Cargo</th>
+                  <th className="p-2">Senha</th>
+                  <th className="p-2">Cliente / Tenant</th>
+                  <th className="p-2 text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-150 bg-white text-slate-700">
+                {profiles.map(p => {
+                  const isUserActiveTenant = p.tenant_id === activeTenant;
+                  const tenantName = tenants.find(t => t.id === p.tenant_id)?.name || p.tenant_id;
+                  return (
+                    <tr key={p.id} className={isUserActiveTenant ? 'bg-rose-50/20 font-medium' : ''}>
+                      <td className="p-2 font-bold text-slate-800">{p.nome}</td>
+                      <td className="p-2 font-mono text-slate-650">{p.username}</td>
+                      <td className="p-2">
+                        <span className={`text-[10px] uppercase font-black px-1.5 py-0.5 rounded-md ${
+                          p.role === 'admin' 
+                            ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                            : 'bg-blue-50 text-blue-800 border border-blue-200'
+                        }`}>
+                          {p.role === 'admin' ? 'Admin' : 'Colaborador'}
+                        </span>
+                      </td>
+                      <td className="p-2 font-mono bg-slate-50/50">{p.senha || '1234'}</td>
+                      <td className="p-2">
+                        <div className="flex flex-col">
+                          <span className="text-slate-800 font-bold">{tenantName}</span>
+                          <span className="text-[9px] font-mono text-slate-400">ID: {p.tenant_id}</span>
+                        </div>
+                      </td>
+                      <td className="p-2 text-right">
+                        <button
+                          onClick={() => handleDeleteProfile(p.id, p.nome)}
+                          disabled={loading}
+                          className="text-[10px] font-bold text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-500 p-1.5 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center border border-rose-200"
+                          title="Excluir Usuário"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
