@@ -23,7 +23,7 @@ export function getActiveTenantId(): string {
       }
     }
   }
-  return localStorage.getItem('supabase_active_tenant_id') || 'c_default';
+  return localStorage.getItem('saved_active_tenant_id') || localStorage.getItem('supabase_active_tenant_id') || 'c_default';
 }
 
 export function setActiveTenantId(id: string) {
@@ -42,7 +42,7 @@ export const mapInventoryToDb = (item: InventoryItem) => ({
   preco_venda: item.precoVenda !== undefined ? item.precoVenda : null,
   estoque_minimo: item.estoqueMinimo,
   data_fabricacao: item.dataFabricacao || null,
-  data_validade: item.dataValidade,
+  data_validade: item.dataValidade || null,
   categoria: item.categoria,
   receita_ingredientes: item.receitaIngredientes ? JSON.stringify(item.receitaIngredientes) : null,
   imagem: item.imagem || null,
@@ -73,7 +73,7 @@ export const mapLossToDb = (record: LossRecord) => ({
   nome_item: record.nomeItem,
   quantidade: record.quantidade,
   unidade: record.unidade,
-  data: record.data,
+  data: record.data || null,
   motivo: record.motivo,
   custo_total: record.custoTotal,
   tenant_id: getActiveTenantId()
@@ -92,7 +92,7 @@ export const mapLossFromDb = (row: any): LossRecord => ({
 
 export const mapSaleToDb = (sale: Sale) => ({
   id: sale.id,
-  data: sale.data,
+  data: sale.data || null,
   itens: typeof sale.itens === 'string' ? sale.itens : JSON.stringify(sale.itens),
   subtotal: sale.subtotal,
   desconto: sale.desconto,
@@ -113,7 +113,7 @@ export const mapSaleFromDb = (row: any): Sale => ({
 
 export const mapTransactionToDb = (tx: Transaction) => ({
   id: tx.id,
-  data: tx.data,
+  data: tx.data || null,
   tipo: tx.tipo,
   categoria: tx.categoria,
   valor: tx.valor,

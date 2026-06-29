@@ -29,9 +29,10 @@ interface MultiTenantManagerProps {
   onAddUserLocal: (user: UserAccount) => void;
   users: UserAccount[];
   supabaseConnected: boolean;
+  userRole: 'admin' | 'collaborator' | 'developer' | null;
 }
 
-export default function MultiTenantManager({ onAddUserLocal, users, supabaseConnected }: MultiTenantManagerProps) {
+export default function MultiTenantManager({ onAddUserLocal, users, supabaseConnected, userRole }: MultiTenantManagerProps) {
   // Lists
   const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
@@ -92,6 +93,11 @@ export default function MultiTenantManager({ onAddUserLocal, users, supabaseConn
     // Reload page to apply changes in real-time or trigger app refresh
     alert(`⚡ Inquilino ativo alterado para [${tenantId}]! O sistema agora operará sob esta partição do banco de dados.`);
     window.location.reload();
+  };
+
+  const handleSaveTenant = () => {
+    localStorage.setItem('saved_active_tenant_id', activeTenant);
+    alert(`✅ Inquilino [${activeTenant}] salvo como padrão para esta máquina!`);
   };
 
   const handleRegisterTenant = async (e: React.FormEvent) => {
@@ -286,6 +292,14 @@ export default function MultiTenantManager({ onAddUserLocal, users, supabaseConn
               </option>
             ))}
           </select>
+          {userRole === 'admin' && (
+            <button
+              onClick={handleSaveTenant}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs py-1.5 px-3 rounded-xl transition-all shadow-3xs cursor-pointer"
+            >
+              Salvar Padrão
+            </button>
+          )}
         </div>
       </div>
 

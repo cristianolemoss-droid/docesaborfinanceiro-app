@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useTenantValidator } from './hooks/useTenantValidator';
 import { 
   INITIAL_INVENTORY, 
   INITIAL_LOSS_RECORDS, 
@@ -94,6 +95,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'pdv' | 'estoque' | 'financeiro' | 'configuracao'>('dashboard');
   const [userRole, setUserRole] = useState<'admin' | 'collaborator' | 'developer' | null>(null);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [loadedTenantId, setLoadedTenantId] = useState<string | null>(null);
   const [devPassword, setDevPassword] = useState<string>(() => {
     const cached = localStorage.getItem('developer_password');
     if (!cached || cached === 'dev1234') {
@@ -102,9 +104,11 @@ export default function App() {
     return cached;
   });
 
+  useTenantValidator(loadedTenantId, () => refreshDataForActiveTenant());
+
   // Helper for tenant-specific storage keys
   const getTenantStorageKey = (baseKey: string) => {
-    const tenantId = localStorage.getItem('supabase_active_tenant_id') || 'c_default';
+    const tenantId = getActiveTenantId();
     return `${baseKey}_${tenantId}`;
   };
 
@@ -166,6 +170,8 @@ export default function App() {
 
   // Supabase Integration UI States
   const [showSupabaseModal, setShowSupabaseModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
   const [supabaseConnected, setSupabaseConnected] = useState(false);
   const [supabaseLogs, setSupabaseLogs] = useState<string>('');
   const [isCopied, setIsCopied] = useState(false);
@@ -372,6 +378,7 @@ export default function App() {
     
     const cachedOrders = localStorage.getItem(getTenantStorageKey('bakery_open_orders'));
     setOpenOrders(cachedOrders ? JSON.parse(cachedOrders) : []);
+    setLoadedTenantId(getActiveTenantId());
   };
 
   // Handle login success and persist session
@@ -729,7 +736,13 @@ export default function App() {
             {/* Supabase Link Button */}
             <button 
               id="btn-header-supabase-sync"
-              onClick={() => setShowSupabaseModal(true)}
+              onClick={() => {
+                if (userRole === 'developer') {
+                  setShowSupabaseModal(true);
+                } else {
+                  setShowPasswordModal(true);
+                }
+              }}
               className={`text-xs font-bold py-1.5 px-3.5 rounded-xl flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer pointer-events-auto ${
                 supabaseConnected 
                   ? 'bg-emerald-50 border-emerald-300 hover:bg-emerald-100/70 text-emerald-800' 
@@ -742,6 +755,48 @@ export default function App() {
                 {supabaseConnected ? 'Supabase Conectado' : 'Supabase (Nuvem)'}
               </span>
             </button>
+            
+            {showPasswordModal && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white p-6 rounded-3xl shadow-xl w-full max-w-sm">
+                  <h3 className="text-lg font-bold mb-4">Acesso Restrito</h3>
+                  <p className="text-sm text-slate-600 mb-4">Digite a senha de desenvolvedor para acessar configurações do Supabase.</p>
+                  <input 
+                    type="password"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    className="w-full p-2 border rounded-xl mb-4"
+                    placeholder="Senha"
+                  />
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => {
+                        if (passwordInput === devPassword) {
+                          setShowPasswordModal(false);
+                          setShowSupabaseModal(true);
+                          setPasswordInput('');
+                        } else {
+                          alert('Senha incorreta.');
+                        }
+                      }}
+                      className="flex-1 bg-rose-500 text-white py-2 rounded-xl"
+                    >
+                      Acessar
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setShowPasswordModal(false);
+                        setPasswordInput('');
+                      }}
+                      className="flex-1 bg-slate-100 py-2 rounded-xl"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
 
             {/* Botão de reset de simulação */}
             <button 
@@ -1175,6 +1230,7 @@ export default function App() {
                 onAddUserLocal={handleAddUser} 
                 users={users} 
                 supabaseConnected={supabaseConnected} 
+                userRole={userRole}
               />
 
               {/* Guia de Configuração e Chaves */}
