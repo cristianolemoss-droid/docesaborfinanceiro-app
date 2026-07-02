@@ -112,6 +112,14 @@ export default function App() {
     return `${baseKey}_${tenantId}`;
   };
 
+  const safeLocalStorageSetItem = (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.error('Error saving to localStorage', e);
+    }
+  };
+
   const handleUpdateDevPassword = (newPass: string) => {
     setDevPassword(newPass);
     localStorage.setItem('developer_password', newPass);
@@ -290,7 +298,7 @@ export default function App() {
           setSupabaseLogs('Conectado com sucesso! Dados carregados da nuvem Supabase em tempo real.');
           
           // Sync LocalStorage for offline speed and buffer redudancy
-          localStorage.setItem(getTenantStorageKey('bakery_inventory'), JSON.stringify(res.inventory));
+          safeLocalStorageSetItem(getTenantStorageKey('bakery_inventory'), JSON.stringify(res.inventory));
           localStorage.setItem(getTenantStorageKey('bakery_losses'), JSON.stringify(res.lossRecords));
           localStorage.setItem(getTenantStorageKey('bakery_transactions'), JSON.stringify(res.transactions));
           localStorage.setItem(getTenantStorageKey('bakery_sales'), JSON.stringify(res.sales));
@@ -314,16 +322,16 @@ export default function App() {
   // Sync to LocalStorage whenever state changes
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem(getTenantStorageKey('bakery_inventory'), JSON.stringify(inventory));
-    localStorage.setItem(getTenantStorageKey('bakery_losses'), JSON.stringify(lossRecords));
-    localStorage.setItem(getTenantStorageKey('bakery_transactions'), JSON.stringify(transactions));
-    localStorage.setItem(getTenantStorageKey('bakery_sales'), JSON.stringify(sales));
+    safeLocalStorageSetItem(getTenantStorageKey('bakery_inventory'), JSON.stringify(inventory));
+    safeLocalStorageSetItem(getTenantStorageKey('bakery_losses'), JSON.stringify(lossRecords));
+    safeLocalStorageSetItem(getTenantStorageKey('bakery_transactions'), JSON.stringify(transactions));
+    safeLocalStorageSetItem(getTenantStorageKey('bakery_sales'), JSON.stringify(sales));
     
     // Global data
     localStorage.setItem('bakery_companies', JSON.stringify(companies));
     localStorage.setItem('bakery_users', JSON.stringify(users));
     
-    localStorage.setItem(getTenantStorageKey('bakery_open_orders'), JSON.stringify(openOrders));
+    safeLocalStorageSetItem(getTenantStorageKey('bakery_open_orders'), JSON.stringify(openOrders));
   }, [inventory, lossRecords, transactions, sales, companies, users, openOrders, isLoaded]);
 
   // Derived active company

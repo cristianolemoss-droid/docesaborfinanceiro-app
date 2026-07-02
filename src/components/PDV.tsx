@@ -158,7 +158,7 @@ export default function PDV({
       const matchSearch = p.nome.toLowerCase().includes(searchTerm.toLowerCase());
       const matchCategory = selectedCategory === 'Todas' || p.categoria === selectedCategory;
       return matchSearch && matchCategory;
-    });
+    }).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [availableProducts, searchTerm, selectedCategory]);
 
   // Identifica itens do carrinho com estoque zerado no inventário em tempo real
@@ -604,7 +604,7 @@ export default function PDV({
                     >
                       <div className="space-y-2.5">
                         {/* Imagem Realista do Produto */}
-                        <div className="w-full aspect-square rounded-2xl overflow-hidden bg-stone-100 border border-stone-100/60 relative shrink-0 shadow-3xs">
+                        <div className="w-20 h-20 mx-auto rounded-2xl overflow-hidden bg-stone-100 border border-stone-100/60 relative shrink-0 shadow-3xs">
                           <img 
                             src={getProductImage(product)} 
                             alt={product.nome}

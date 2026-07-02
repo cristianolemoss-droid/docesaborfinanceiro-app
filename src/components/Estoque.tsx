@@ -147,7 +147,7 @@ export default function Estoque({ inventory, onUpdateInventory, onAddLossRecord 
       const matchType = filterType === 'todos' || item.tipo === filterType;
       const matchCat = selectedCategory === 'Todas' || item.categoria === selectedCategory;
       return matchSearch && matchType && matchCat;
-    });
+    }).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [inventory, searchTerm, filterType, selectedCategory]);
 
   // Adicionar novo item
