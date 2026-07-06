@@ -897,6 +897,7 @@ export default function App() {
                   users={users}
                   openOrders={openOrders}
                   onUpdateOpenOrders={setOpenOrders}
+                  userRole={userRole}
                 />
               ) : (
                 <LockScreen 
@@ -945,6 +946,7 @@ export default function App() {
                   onLogin={handleLoginSuccess}
                   devPassword={devPassword}
                   companyName={activeCompany?.nomeFantasia}
+                  inventory={inventory}
                 />
               ) : (
                 <LockScreen 

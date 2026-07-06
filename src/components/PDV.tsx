@@ -59,6 +59,7 @@ interface PDVProps {
   users?: UserAccount[];
   openOrders?: OpenOrder[];
   onUpdateOpenOrders?: (orders: OpenOrder[]) => void;
+  userRole?: 'admin' | 'collaborator' | 'developer' | null;
 }
 
 interface CartItem {
@@ -74,7 +75,8 @@ export default function PDV({
   onCancelSale,
   users = [],
   openOrders = [],
-  onUpdateOpenOrders
+  onUpdateOpenOrders,
+  userRole
 }: PDVProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
@@ -83,6 +85,15 @@ export default function PDV({
   const [discountValue, setDiscountValue] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix');
   const [cashReceived, setCashReceived] = useState<string>('');
+  
+  const [operationDate, setOperationDate] = useState<string>(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
+  const [isEditingDate, setIsEditingDate] = useState(false);
   
   // Sale complete Modal state
   const [showReceiptModal, setShowReceiptModal] = useState(false);
@@ -390,7 +401,7 @@ export default function PDV({
 
     // Criar o objeto da venda final
     const saleId = 'sale_' + Math.random().toString(36).substr(2, 9);
-    const saleDate = new Date().toISOString().split('T')[0];
+    const saleDate = operationDate;
 
     const saleItems = cart.map(item => {
       const preco = item.product.precoVenda || 0;
@@ -456,7 +467,38 @@ export default function PDV({
 
   return (
     <div className="space-y-4" id="pdv-main-wrapper">
-
+      {/* Barra de Data de Operação */}
+      <div className={`p-3 rounded-2xl border flex items-center justify-between transition-colors ${pdvTheme === 'cozy_terracotta' ? 'bg-stone-50 border-stone-200/60' : 'bg-white border-rose-100/50'}`}>
+        <div className="flex items-center gap-2">
+          <Clock className={`w-4 h-4 ${pdvTheme === 'cozy_terracotta' ? 'text-amber-600' : 'text-rose-500'}`} />
+          <span className="text-xs font-bold text-slate-700">Data da Operação:</span>
+          {isEditingDate ? (
+            <input
+              type="date"
+              value={operationDate}
+              onChange={(e) => setOperationDate(e.target.value)}
+              className="text-xs font-bold bg-white border border-slate-300 rounded-lg px-2 py-1 outline-hidden focus:border-rose-400"
+            />
+          ) : (
+            <span className="text-xs font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded-lg">
+              {formatDateBR(operationDate)}
+            </span>
+          )}
+        </div>
+        {userRole === 'admin' && (
+          <button
+            type="button"
+            onClick={() => setIsEditingDate(!isEditingDate)}
+            className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer pointer-events-auto ${
+              isEditingDate 
+                ? 'bg-emerald-500 text-white hover:bg-emerald-600' 
+                : pdvTheme === 'cozy_terracotta' ? 'bg-stone-200 text-stone-700 hover:bg-stone-300' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
+            }`}
+          >
+            {isEditingDate ? 'Confirmar' : 'Alterar Data'}
+          </button>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6" id="pdv-panel-container">
         {/* Coluna Esquerda: Catalogo de Doces e Fatias */}

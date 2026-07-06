@@ -40,6 +40,8 @@ import {
   Award
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import bgImage from '../assets/images/bakery_display_bg_1781612198209.jpg';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface DashboardProps {
   inventory: InventoryItem[];
@@ -350,6 +352,32 @@ export default function Dashboard({
       .slice(0, 6);
   }, [sales, openOrders, lossRecords, transactions]);
 
+  // 7. DADOS FINANCEIROS PARA O GRÁFICO DE BARRAS (ÚLTIMOS 7 DIAS)
+  const financialChartData = useMemo(() => {
+    const days: string[] = [];
+    const ref = new Date(kpis.referenceDate + 'T12:00:00');
+    
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(ref);
+      d.setDate(d.getDate() - i);
+      days.push(d.toISOString().split('T')[0]);
+    }
+
+    return days.map(date => {
+      const dayTransactions = transactions.filter(t => t.data === date);
+      const receitas = dayTransactions.filter(t => t.tipo === 'receita').reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+      const despesas = dayTransactions.filter(t => t.tipo === 'despesa').reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+      const lucro = receitas - despesas;
+      
+      return {
+        name: formatDateBR(date).substring(0, 5),
+        Vendas: parseFloat(receitas.toFixed(2)),
+        Despesas: parseFloat(despesas.toFixed(2)),
+        Lucro: parseFloat(lucro.toFixed(2)),
+      };
+    });
+  }, [transactions, kpis.referenceDate]);
+
   return (
     <div className="space-y-8 font-sans pb-10" id="dashboard-saas-panel">
       
@@ -376,10 +404,16 @@ export default function Dashboard({
 
       {/* PAINEL DE BEM-VINDO DA CONFEITARIA (INTERATIVO & AMIGÁVEL) */}
       <div 
-        className="bg-gradient-to-r from-rose-50/90 via-amber-50/50 to-pink-50/90 rounded-3xl p-5 md:p-6 border border-pink-100/75 shadow-sm pastry-glow flex flex-col lg:flex-row gap-6 items-center justify-between transition-all"
+        className="rounded-3xl p-5 md:p-6 border border-pink-100/75 shadow-sm pastry-glow flex flex-col lg:flex-row gap-6 items-center justify-between transition-all relative overflow-hidden"
         id="confeitaria-welcome-banner"
       >
-        <div className="space-y-3 flex-1 text-center lg:text-left">
+        <div className="absolute inset-0 z-0 bg-gradient-to-r from-rose-50 via-amber-50 to-pink-50" />
+        <div 
+          className="absolute inset-0 z-0 opacity-40 mix-blend-overlay" 
+          style={{ backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }} 
+        />
+        <div className="absolute inset-0 z-0 bg-white/30 pointer-events-none" />
+        <div className="space-y-3 flex-1 text-center lg:text-left relative z-10">
           <div className="flex items-center gap-1.5 justify-center lg:justify-start text-rose-600 font-bold text-xs uppercase tracking-widest">
             <Sparkles className="w-3.5 h-3.5 animate-pulse text-amber-500 fill-amber-400" />
             <span>Painel do Confeiteiro</span>
@@ -415,7 +449,7 @@ export default function Dashboard({
 
         {/* WIDGET INTERATIVO: DICA DO CONFEITEIRO */}
         <div 
-          className="bg-white/95 border border-pink-100/80 rounded-2xl p-4.5 lg:max-w-md w-full shadow-3xs relative flex flex-col justify-between gap-3 font-sans"
+          className="bg-white/95 border border-pink-100/80 rounded-2xl p-4.5 lg:max-w-md w-full shadow-3xs relative z-10 flex flex-col justify-between gap-3 font-sans"
           id="chef-tips-card-box"
         >
           <div className="flex items-center justify-between pb-1.5 border-b border-pink-50">
@@ -716,7 +750,7 @@ export default function Dashboard({
 
       {/* SEÇÃO 3: PAINEL DE ESTATÍSTICAS (O PROFISSIONAL) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8" id="dashboard-statistics-panel-grid">
-        
+                
         {/* Gráfico de Tendência de Vendas (Linhas) */}
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm lg:col-span-2 flex flex-col justify-between" id="dashboard-trend-graph-widget">
           <div>
@@ -885,7 +919,7 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* Distribuição por Categorias (Donut Chart) */}
+{/* Distribuição por Categorias (Donut Chart) */}
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between" id="dashboard-category-distribution-widget">
           <div>
             <h3 className="font-black text-slate-900 text-sm">Distribuição de Receita</h3>
@@ -1020,6 +1054,64 @@ export default function Dashboard({
 
       </div>
 
+
+
+      <div className="grid grid-cols-1 gap-8 mt-8">
+{/* Gráfico de Desempenho Financeiro (Barras) */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm w-full flex flex-col justify-between" id="dashboard-trend-graph-widget">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-black text-slate-900 text-sm" id="lbl-chart-title">Desempenho Financeiro (Últimos 7 Dias)</h3>
+                <p className="text-xs text-slate-400">Relação diária de Vendas, Despesas e Lucro Líquido na semana.</p>
+              </div>
+            </div>
+            
+            {/* Recharts BarChart */}
+            <div className="w-full h-72 mt-6 relative" id="recharts-financial-chart-box">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={financialChartData}
+                  margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="name" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fontSize: 10, fill: '#64748b', fontWeight: 600 }}
+                    dy={10}
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }}
+                    tickFormatter={(value) => `R${value}`}
+                  />
+                  <RechartsTooltip 
+                    cursor={{ fill: '#f8fafc' }}
+                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', fontSize: '12px', fontWeight: 'bold' }}
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', paddingTop: '20px' }} />
+                  <Bar dataKey="Vendas" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Despesas" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Lucro" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-100 pt-4 mt-6 flex justify-between items-center text-xs text-slate-400">
+            <span>Nota: Lucro Líquido = Vendas - Despesas. Reflete o saldo operacional dos últimos dias.</span>
+            <button 
+              onClick={() => onNavigate('financeiro')} 
+              className="text-rose-500 font-black hover:underline pointer-events-auto flex items-center gap-0.5"
+            >
+              Consultar Livro Caixa <ArrowUpRight className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+              </div>
 
       {/* SEÇÃO 4: CONTROLE OPERACIONAL (O DIFERENCIAL) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8" id="dashboard-operational-zone">

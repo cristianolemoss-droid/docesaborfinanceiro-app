@@ -50,7 +50,8 @@ export default function Configuracao({
   onUpdateUser,
   onDeleteUser,
   devPassword = 'Cris@551866',
-  onUpdateDevPassword
+  onUpdateDevPassword,
+  onShowInstallModal
 }: ConfiguracaoProps) {
   // Controle de seção ativa
   const [configSection, setConfigSection] = useState<'empresa' | 'usuarios' | 'desenvolvedor'>('empresa');

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Transaction, LossRecord, Sale, UserAccount } from '../types';
+import { Transaction, LossRecord, Sale, UserAccount, InventoryItem } from '../types';
 import { formatDateBR, getOffsetDateString } from '../utils/dateHelpers';
 import { 
   DollarSign, 
@@ -42,6 +42,7 @@ interface FinanceiroProps {
   onLogin?: (role: 'admin' | 'collaborator' | 'developer', user?: UserAccount) => void;
   devPassword?: string;
   companyName?: string;
+  inventory?: InventoryItem[];
 }
 
 export default function Financeiro({ 
@@ -53,7 +54,8 @@ export default function Financeiro({
   users = [],
   onLogin,
   devPassword,
-  companyName
+  companyName,
+  inventory = []
 }: FinanceiroProps) {
   const [filterType, setFilterType] = useState<'todos' | 'receita' | 'despesa'>('todos');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
@@ -355,6 +357,28 @@ export default function Financeiro({
     data: ''
   });
 
+  // States for Desperdício de Estoque selection helper
+  const [selectedLossItem, setSelectedLossItem] = useState<InventoryItem | null>(null);
+  const [lossItemQty, setLossItemQty] = useState<number>(1);
+  const [itemSearchQuery, setItemSearchQuery] = useState('');
+
+  const handleCategoryChange = (cat: string) => {
+    setFormTx(prev => ({ ...prev, categoria: cat }));
+    setSelectedLossItem(null);
+    setLossItemQty(1);
+    setItemSearchQuery('');
+  };
+
+  const filteredInventoryItems = useMemo(() => {
+    if (!inventory) return [];
+    if (!itemSearchQuery.trim()) return inventory;
+    const q = itemSearchQuery.toLowerCase();
+    return inventory.filter(item => 
+      item.nome.toLowerCase().includes(q) || 
+      (item.categoria && item.categoria.toLowerCase().includes(q))
+    );
+  }, [inventory, itemSearchQuery]);
+
   // Categorias únicas presentes nas transações
   const categories = useMemo(() => {
     const list = transactions.map(t => t.categoria);
@@ -493,6 +517,9 @@ export default function Financeiro({
       descricao: '',
       data: new Date().toISOString().split('T')[0]
     });
+    setSelectedLossItem(null);
+    setLossItemQty(1);
+    setItemSearchQuery('');
     setShowAddModal(true);
   };
 
@@ -875,7 +902,7 @@ export default function Financeiro({
                     id="sel-tx-categoria"
                     className="w-full bg-slate-50 border border-slate-200 py-2.5 px-3 rounded-xl focus:outline-hidden focus:bg-white font-bold pointer-events-auto"
                     value={formTx.categoria}
-                    onChange={e => setFormTx({ ...formTx, categoria: e.target.value })}
+                    onChange={e => handleCategoryChange(e.target.value)}
                   >
                     {suggestedCategories[activeModalType].map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
@@ -886,16 +913,170 @@ export default function Financeiro({
                 {/* Descrição */}
                 <div className="space-y-1">
                   <label className="font-bold text-slate-700">Breve Descrição do Lançamento</label>
-                  <input 
-                    id="inp-tx-desc"
-                    type="text" 
-                    placeholder="Ex: Compra de embalagens para bolos, conta de luz..."
-                    required
-                    className="w-full bg-slate-50 border border-slate-200 py-2.5 px-3 rounded-xl focus:outline-hidden focus:bg-white"
-                    value={formTx.descricao}
-                    onChange={e => setFormTx({ ...formTx, descricao: e.target.value })}
-                  />
+                  {activeModalType === 'despesa' && 
+                   (formTx.categoria.trim().toLowerCase() === 'desperdício de estoque' || 
+                    formTx.categoria.trim().toLowerCase() === 'desperdicio de estoque') ? (
+                    <select
+                      id="inp-tx-desc-select"
+                      required
+                      className="w-full bg-slate-50 border border-slate-200 py-2.5 px-3 rounded-xl focus:outline-hidden focus:bg-white font-bold text-slate-800 pointer-events-auto"
+                      value={selectedLossItem?.id || ''}
+                      onChange={e => {
+                        const itemId = e.target.value;
+                        const item = inventory.find(i => i.id === itemId);
+                        if (item) {
+                          setSelectedLossItem(item);
+                          setLossItemQty(1);
+                          const unitCost = item.custoUnitario || item.precoVenda || 0;
+                          setFormTx(prev => ({
+                            ...prev,
+                            valor: unitCost.toFixed(2),
+                            descricao: `Desperdício de Estoque: ${item.nome} (1 ${item.unidade})`
+                          }));
+                        } else {
+                          setSelectedLossItem(null);
+                          setLossItemQty(1);
+                          setFormTx(prev => ({
+                            ...prev,
+                            valor: '',
+                            descricao: ''
+                          }));
+                        }
+                      }}
+                    >
+                      <option value="">-- Escolha o Item Descartado do PDV --</option>
+                      {inventory.map(item => {
+                        const unitCost = item.custoUnitario || item.precoVenda || 0;
+                        return (
+                          <option key={item.id} value={item.id}>
+                            {item.nome} ({item.tipo === 'ingrediente' ? 'Ingrediente' : 'Produto Final'} | Custo: R$ {unitCost.toFixed(2)})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  ) : (
+                    <input 
+                      id="inp-tx-desc"
+                      type="text" 
+                      placeholder="Ex: Compra de embalagens para bolos, conta de luz..."
+                      required
+                      className="w-full bg-slate-50 border border-slate-200 py-2.5 px-3 rounded-xl focus:outline-hidden focus:bg-white"
+                      value={formTx.descricao}
+                      onChange={e => setFormTx({ ...formTx, descricao: e.target.value })}
+                    />
+                  )}
                 </div>
+
+                {/* List of items from the PDV for "Desperdício de Estoque" */}
+                {activeModalType === 'despesa' && 
+                 (formTx.categoria.trim().toLowerCase() === 'desperdício de estoque' || 
+                  formTx.categoria.trim().toLowerCase() === 'desperdicio de estoque') && (
+                  <div className="space-y-2 border border-rose-100 bg-rose-50/20 p-3 rounded-2xl animate-fade-in" id="inventory-loss-selector">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-slate-800 text-[11px] flex items-center gap-1">
+                        📦 Detalhes do Desperdício
+                      </span>
+                      {selectedLossItem && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedLossItem(null);
+                            setLossItemQty(1);
+                            setFormTx(prev => ({ ...prev, valor: '', descricao: '' }));
+                          }}
+                          className="text-[10px] text-rose-500 hover:underline font-bold pointer-events-auto cursor-pointer"
+                        >
+                          Limpar seleção
+                        </button>
+                      )}
+                    </div>
+
+                    {!selectedLossItem ? (
+                      <div className="p-3 text-center text-[11px] text-rose-600 font-bold bg-white border border-dashed border-rose-200 rounded-xl">
+                        Selecione um produto na lista suspensa acima (Breve Descrição) para calcular o prejuízo.
+                      </div>
+                    ) : (
+                      <div className="bg-white p-2.5 border border-rose-100/60 rounded-xl space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-[9px] text-rose-500 font-extrabold uppercase tracking-wider block">Item Escolhido</span>
+                            <span className="font-bold text-slate-900 text-xs">{selectedLossItem.nome}</span>
+                            <span className="text-[10px] text-slate-400 block mt-0.5">
+                              Estoque atual: {selectedLossItem.quantidade} {selectedLossItem.unidade}
+                            </span>
+                          </div>
+                          <span className="text-[10px] bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded-full capitalize">
+                            {selectedLossItem.unidade}
+                          </span>
+                        </div>
+
+                        {/* Quantity Stepper Selector */}
+                        <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100">
+                          <span className="text-[10px] font-bold text-slate-650">Quantidade desperdiçada:</span>
+                          <div className="flex items-center border rounded-lg bg-slate-50">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newQty = Math.max(1, lossItemQty - 1);
+                                setLossItemQty(newQty);
+                                const unitCost = selectedLossItem.custoUnitario || selectedLossItem.precoVenda || 0;
+                                setFormTx(prev => ({
+                                  ...prev,
+                                  valor: (newQty * unitCost).toFixed(2),
+                                  descricao: `Desperdício de Estoque: ${selectedLossItem.nome} (${newQty} ${selectedLossItem.unidade})`
+                                }));
+                              }}
+                              className="px-2 py-0.5 hover:bg-slate-200 text-slate-600 font-bold pointer-events-auto cursor-pointer"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min="1"
+                              className="w-10 text-center bg-transparent text-xs font-bold font-mono focus:outline-hidden py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              value={lossItemQty}
+                              onChange={e => {
+                                const val = parseInt(e.target.value) || 1;
+                                const newQty = Math.max(1, val);
+                                setLossItemQty(newQty);
+                                const unitCost = selectedLossItem.custoUnitario || selectedLossItem.precoVenda || 0;
+                                setFormTx(prev => ({
+                                  ...prev,
+                                  valor: (newQty * unitCost).toFixed(2),
+                                  descricao: `Desperdício de Estoque: ${selectedLossItem.nome} (${newQty} ${selectedLossItem.unidade})`
+                                }));
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newQty = lossItemQty + 1;
+                                setLossItemQty(newQty);
+                                const unitCost = selectedLossItem.custoUnitario || selectedLossItem.precoVenda || 0;
+                                setFormTx(prev => ({
+                                  ...prev,
+                                  valor: (newQty * unitCost).toFixed(2),
+                                  descricao: `Desperdício de Estoque: ${selectedLossItem.nome} (${newQty} ${selectedLossItem.unidade})`
+                                }));
+                              }}
+                              className="px-2 py-0.5 hover:bg-slate-200 text-slate-600 font-bold pointer-events-auto cursor-pointer"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Calculated Subtotal */}
+                        <div className="bg-rose-50/55 p-2 rounded-lg text-[10px] text-slate-650 flex justify-between font-semibold">
+                          <span>Subtotal Estimado:</span>
+                          <span className="font-mono text-rose-700 font-extrabold">
+                            R$ {(lossItemQty * (selectedLossItem.custoUnitario || selectedLossItem.precoVenda || 0)).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Data */}
                 <div className="space-y-1">
