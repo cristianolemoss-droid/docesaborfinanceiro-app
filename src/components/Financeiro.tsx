@@ -27,7 +27,8 @@ import {
   Share2,
   Download,
   Copy,
-  Check
+  Check,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -40,6 +41,7 @@ interface FinanceiroProps {
   sales?: Sale[];
   users?: UserAccount[];
   onLogin?: (role: 'admin' | 'collaborator' | 'developer', user?: UserAccount) => void;
+  onDeleteTransaction: (id: string) => void;
   devPassword?: string;
   companyName?: string;
   inventory?: InventoryItem[];
@@ -47,7 +49,8 @@ interface FinanceiroProps {
 
 export default function Financeiro({ 
   transactions, 
-  onAddTransaction, 
+  onAddTransaction,
+  onDeleteTransaction,
   userRole, 
   lossRecords = [], 
   sales = [],
@@ -754,12 +757,13 @@ export default function Financeiro({
                 <th className="py-3.5 px-4 font-sans">Categoria</th>
                 <th className="py-3.5 px-4 text-rose-500 font-sans">Origem / Integração</th>
                 <th className="py-3.5 px-4 text-right font-sans">Valor do Lançamento</th>
+                {userRole === 'admin' && <th className="py-3.5 px-4 text-right font-sans">Ações</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-rose-50 text-xs text-slate-700">
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-slate-400" id="financeiro-empty-row">
+                  <td colSpan={userRole === 'admin' ? 6 : 5} className="py-12 text-center text-slate-400" id="financeiro-empty-row">
                     Nenhuma movimentação financeira encontrada correspondente aos filtros.
                   </td>
                 </tr>
@@ -839,6 +843,18 @@ export default function Financeiro({
                         {tx.tipo === 'receita' ? '+' : '-'} R$ {tx.valor.toFixed(2)}
                       </span>
                     </td>
+                    
+                    {userRole === 'admin' && (
+                      <td className="py-3.5 px-4 text-right">
+                        <button
+                          onClick={() => onDeleteTransaction(tx.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors pointer-events-auto"
+                          title="Excluir lançamento"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

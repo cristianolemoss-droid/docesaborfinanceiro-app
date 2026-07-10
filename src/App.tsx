@@ -65,6 +65,7 @@ import {
   syncSingleLoss, 
   syncAllInventoryItems, 
   deleteSingleSale,
+  deleteSingleTransaction,
   deleteTransactionsByOrigin,
   fetchProfilesFromSupabase,
   registerProfileInSupabase,
@@ -637,6 +638,21 @@ export default function App() {
     });
   };
 
+  const handleDeleteTransaction = (id: string) => {
+    const tx = transactions.find(t => t.id === id);
+    if (!tx) return;
+
+    if (tx.origemId && tx.origemId.startsWith('sale_')) {
+      handleCancelSale(tx.origemId);
+      return;
+    }
+
+    setTransactions(prev => prev.filter(t => t.id !== id));
+    if (isSupabaseConfigured() && supabaseConnected) {
+      deleteSingleTransaction(id).catch(err => console.error(err));
+    }
+  };
+
   if (!isLoaded) {
     return (
       <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center font-sans">
@@ -944,6 +960,7 @@ export default function App() {
                   sales={sales}
                   users={users}
                   onLogin={handleLoginSuccess}
+                  onDeleteTransaction={handleDeleteTransaction}
                   devPassword={devPassword}
                   companyName={activeCompany?.nomeFantasia}
                   inventory={inventory}
