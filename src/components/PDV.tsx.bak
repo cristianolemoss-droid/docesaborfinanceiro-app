@@ -5,7 +5,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Sale, PaymentMethod, CompanyConfig, UserAccount, OpenOrder } from '../types';
-import { Search, ShoppingCart, Percent, User, Receipt, Sparkles, AlertCircle, Trash2, Candy, Lock, ShieldAlert, CheckCircle, X, RefreshCw, Clock, Table, ClipboardList, Package, Printer, Maximize2, Minimize2 } from 'lucide-react';
+import { Search, ShoppingCart, Percent, User, Receipt, Sparkles, AlertCircle, Trash2, Candy, Lock, ShieldAlert, CheckCircle, X, RefreshCw, Clock, Table, ClipboardList, Package, Printer } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDateBR } from '../utils/dateHelpers';
 
@@ -94,23 +94,6 @@ export default function PDV({
     return `${year}-${month}-${day}`;
   });
   const [isEditingDate, setIsEditingDate] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().then(() => {
-        setIsFullscreen(true);
-      }).catch(err => {
-        console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-      });
-    } else {
-      document.exitFullscreen().then(() => {
-        setIsFullscreen(false);
-      }).catch(err => {
-        console.error(`Error attempting to disable full-screen mode: ${err.message} (${err.name})`);
-      });
-    }
-  };
   
   // Sale complete Modal state
   const [showReceiptModal, setShowReceiptModal] = useState(false);
@@ -501,19 +484,7 @@ export default function PDV({
               {formatDateBR(operationDate)}
             </span>
           )}
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="p-1 rounded-lg hover:bg-slate-200 transition-colors"
-            title="Tela Cheia"
-          >
-            {isFullscreen ? <Minimize2 className="w-5 h-5 text-red-600" /> : <Maximize2 className="w-5 h-5 text-red-600" />}
-          </button>
-          <span className="text-[10px] font-bold text-slate-500">Tela Cheia</span>
         </div>
-        </div>
-        
         {userRole === 'admin' && (
           <button
             type="button"
@@ -639,7 +610,7 @@ export default function PDV({
             </div>
 
             {/* Grid de Produtos - Estilo Terminal Touch Screen (Altamente Visual) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3.5 overflow-y-auto pr-2" id="pdv-inventory-grid" style={{ maxHeight: 'calc(100vh - 250px)' }}>
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3.5" id="pdv-inventory-grid">
               {filteredProducts.length === 0 ? (
                 <div 
                   className={`col-span-full rounded-3xl p-12 text-center text-slate-400 border ${
@@ -1334,7 +1305,7 @@ export default function PDV({
 
       {/* Coluna Direita: Carrinho e Fechamento */}
       <div 
-        className={`lg:col-span-5 rounded-3xl border p-5 flex flex-col gap-4 transition-all ${
+        className={`lg:col-span-5 rounded-3xl border p-5 flex flex-col justify-between transition-all ${
           pdvTheme === 'cozy_terracotta'
             ? 'bg-white border-stone-200 shadow-sm'
             : 'bg-white border-rose-50 shadow-xs'

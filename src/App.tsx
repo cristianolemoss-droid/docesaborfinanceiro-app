@@ -52,7 +52,9 @@ import {
   Smartphone,
   Monitor,
   Apple,
-  Chrome
+  Chrome,
+  QrCode,
+  Share2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { isSupabaseConfigured, getSupabaseConfig, getSupabaseCredentials, saveSupabaseCredentials } from './utils/supabaseClient';
@@ -179,6 +181,7 @@ export default function App() {
 
   // Supabase Integration UI States
   const [showSupabaseModal, setShowSupabaseModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [supabaseConnected, setSupabaseConnected] = useState(false);
@@ -188,6 +191,8 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [tempSupabaseUrl, setTempSupabaseUrl] = useState('');
   const [tempSupabaseAnonKey, setTempSupabaseAnonKey] = useState('');
+  const [shareUrl, setShareUrl] = useState('https://ais-pre-4qykl3wqmdg5x2wpet7vud-585518200419.us-east1.run.app');
+  const [isShareUrlCopied, setIsShareUrlCopied] = useState(false);
 
   useEffect(() => {
     if (showSupabaseModal) {
@@ -757,15 +762,22 @@ export default function App() {
               </button>
             )}
 
+            {/* Share / Install Button */}
+            <button 
+              id="btn-header-share"
+              onClick={() => setShowShareModal(true)}
+              className="bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer pointer-events-auto"
+              title="Compartilhar Link ou Gerar QR Code para Tablet/Celular"
+            >
+              <QrCode className="w-3.5 h-3.5" />
+              <span className="hidden leading-none sm:inline">Compartilhar App</span>
+            </button>
+
             {/* Supabase Link Button */}
             <button 
               id="btn-header-supabase-sync"
               onClick={() => {
-                if (userRole === 'developer') {
-                  setShowSupabaseModal(true);
-                } else {
-                  setShowPasswordModal(true);
-                }
+                setShowSupabaseModal(true);
               }}
               className={`text-xs font-bold py-1.5 px-3.5 rounded-xl flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer pointer-events-auto ${
                 supabaseConnected 
@@ -1260,6 +1272,88 @@ export default function App() {
                 userRole={userRole}
               />
 
+              {/* QR Code de Compartilhamento & Instalação PWA */}
+              <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 space-y-4 shadow-3xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl">
+                    <QrCode className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-800 uppercase tracking-wide">Compartilhar & Instalar no Tablet / Celular</h4>
+                    <p className="text-xs text-slate-500">Gere e escaneie o QR Code abaixo para sincronizar dispositivos no seu Supabase Conectado!</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col md:flex-row gap-5 items-center bg-white p-4 rounded-2xl border border-slate-100">
+                  {/* QR Code Container */}
+                  <div className="flex flex-col items-center gap-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200 shrink-0">
+                    <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-3xs">
+                      <img 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareUrl)}`}
+                        alt="QR Code de Instalação"
+                        className="w-40 h-40 object-contain select-none"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                    <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">Escaneie para Instalar</span>
+                  </div>
+
+                  {/* Informações de Link e PWA */}
+                  <div className="flex-1 space-y-3 w-full text-left">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Link de Compartilhamento:</label>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={shareUrl}
+                          onChange={(e) => setShareUrl(e.target.value)}
+                          className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-250 rounded-xl text-xs font-mono text-slate-700 focus:outline-none focus:ring-1 focus:ring-rose-500 focus:border-rose-500"
+                          placeholder="Digite o link do app para gerar o QR"
+                        />
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(shareUrl);
+                            setIsShareUrlCopied(true);
+                            setTimeout(() => setIsShareUrlCopied(false), 2000);
+                          }}
+                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1 active:scale-[0.98]"
+                        >
+                          {isShareUrlCopied ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
+                          {isShareUrlCopied ? "Copiado!" : "Copiar"}
+                        </button>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => setShareUrl('https://ais-pre-4qykl3wqmdg5x2wpet7vud-585518200419.us-east1.run.app')}
+                          className="text-[10px] text-slate-500 hover:text-rose-600 underline font-semibold"
+                        >
+                          Usar Link de Produção (Pre-Built)
+                        </button>
+                        <span className="text-[10px] text-slate-350">•</span>
+                        <button
+                          onClick={() => setShareUrl(window.location.origin)}
+                          className="text-[10px] text-slate-500 hover:text-rose-600 underline font-semibold"
+                        >
+                          Usar Link Atual (Dinâmico)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-teal-50/45 border border-teal-100 rounded-xl space-y-1.5 text-[11px] leading-relaxed">
+                      <h5 className="font-extrabold text-teal-850 flex items-center gap-1">
+                        <Smartphone className="w-3.5 h-3.5" />
+                        Como instalar no Tablet / Celular:
+                      </h5>
+                      <ul className="list-disc list-inside space-y-1 text-slate-650 font-sans pl-1">
+                        <li><strong>Android (Chrome):</strong> Toque nos 3 pontinhos no topo direito e escolha <strong>"Instalar aplicativo"</strong> ou <strong>"Adicionar à tela inicial"</strong>.</li>
+                        <li><strong>iOS / iPad (Safari):</strong> Toque no botão de <strong>"Compartilhar"</strong> (ícone de seta pra cima) e selecione <strong>"Adicionar à Tela de Início"</strong>.</li>
+                        <li><strong>Modo Offline Ativo:</strong> Uma vez instalado, o aplicativo rodará offline e carregará os dados instantaneamente, sincronizando tudo com o seu <strong>Supabase</strong> em tempo real!</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Guia de Configuração e Chaves */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold uppercase text-slate-400 tracking-wider">Como Ligar Seu Supabase</h4>
@@ -1327,6 +1421,117 @@ export default function App() {
                 </button>
               </div>
 
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL DE COMPARTILHAMENTO & QR CODE */}
+      <AnimatePresence>
+        {showShareModal && (
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto" id="share-qrcode-modal">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl border border-rose-100 max-w-lg w-full p-6 shadow-2xl relative space-y-6 text-left"
+            >
+              {/* Botão Fechar */}
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="absolute right-4 top-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 rounded-full transition-all pointer-events-auto cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              {/* Cabeçalho */}
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl relative">
+                  <QrCode className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 font-serif">Copiar & Compartilhar Aplicativo</h3>
+                  <p className="text-xs text-slate-500">Instale no tablet/celular e sincronize dados via Supabase em tempo real!</p>
+                </div>
+              </div>
+
+              {/* QR Code Container */}
+              <div className="flex flex-col items-center gap-3 bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm">
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(shareUrl)}`}
+                    alt="QR Code de Instalação"
+                    className="w-44 h-44 object-contain select-none"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Aponte a câmera para abrir</span>
+              </div>
+
+              {/* Campo de link e botões */}
+              <div className="space-y-2">
+                <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Link do Aplicativo:</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={shareUrl}
+                    onChange={(e) => setShareUrl(e.target.value)}
+                    className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-250 rounded-xl text-xs font-mono text-slate-750 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+                    placeholder="Link de Compartilhamento"
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareUrl);
+                      setIsShareUrlCopied(true);
+                      setTimeout(() => setIsShareUrlCopied(false), 2000);
+                    }}
+                    className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-3xs"
+                  >
+                    {isShareUrlCopied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+                    {isShareUrlCopied ? "Copiado!" : "Copiar"}
+                  </button>
+                </div>
+                
+                {/* Botões rápidos de alternância de link */}
+                <div className="flex gap-3 pt-1 justify-center">
+                  <button
+                    onClick={() => setShareUrl('https://ais-pre-4qykl3wqmdg5x2wpet7vud-585518200419.us-east1.run.app')}
+                    className="text-[11px] text-slate-500 hover:text-rose-600 underline font-semibold"
+                  >
+                    Link de Produção (Recomendado)
+                  </button>
+                  <span className="text-[11px] text-slate-350">•</span>
+                  <button
+                    onClick={() => setShareUrl(window.location.origin)}
+                    className="text-[11px] text-slate-500 hover:text-rose-600 underline font-semibold"
+                  >
+                    Link da Sessão Atual
+                  </button>
+                </div>
+              </div>
+
+              {/* Como instalar */}
+              <div className="p-4 bg-teal-50/45 border border-teal-100 rounded-2xl space-y-2 text-xs leading-relaxed text-left">
+                <h5 className="font-extrabold text-teal-850 flex items-center gap-1.5">
+                  <Smartphone className="w-4 h-4" />
+                  Instruções para Instalação no Tablet:
+                </h5>
+                <ul className="list-disc list-inside space-y-1.5 text-slate-650 font-sans pl-1">
+                  <li><strong>No Android (Chrome / Samsung Internet):</strong> Toque nos 3 pontinhos do menu e escolha <strong>"Instalar aplicativo"</strong> ou <strong>"Adicionar à tela inicial"</strong>.</li>
+                  <li><strong>No iPad / iOS (Safari):</strong> Toque no ícone de <strong>Compartilhar</strong> (seta para cima) e escolha <strong>"Adicionar à Tela de Início"</strong>.</li>
+                  <li><strong>Sincronia Offline:</strong> Após instalado, você verá o ícone na tela inicial do tablet como um aplicativo nativo super leve!</li>
+                </ul>
+              </div>
+
+              {/* Botão Concluir */}
+              <div className="pt-2 border-t border-rose-50 flex justify-end">
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2 px-5 rounded-xl transition-all"
+                >
+                  Fechar
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

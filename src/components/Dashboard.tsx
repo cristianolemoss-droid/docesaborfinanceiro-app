@@ -222,6 +222,43 @@ export default function Dashboard({
     };
   }, [sales, inventory]);
 
+  // 4.5. DISTRIBUIÇÃO DE DESPERDÍCIO (DONUT CHART)
+  const lossDistribution = useMemo(() => {
+    const lossByItem: Record<string, { nome: string; valor: number }> = {};
+    let totalLoss = 0;
+
+    lossRecords.forEach(loss => {
+      lossByItem[loss.nomeItem] = {
+        nome: loss.nomeItem,
+        valor: (lossByItem[loss.nomeItem]?.valor || 0) + loss.custoTotal
+      };
+      totalLoss += loss.custoTotal;
+    });
+
+    // Converter para lista ordenada
+    const list = Object.values(lossByItem).map(item => {
+      const percentage = totalLoss > 0 ? (item.valor / totalLoss) * 100 : 0;
+      return { name: item.nome, value: item.valor, percentage };
+    }).sort((a, b) => b.value - a.value);
+
+    // Paleta de cores moderna e sutil (variante de rose para perdas)
+    const colors = [
+      '#f43f5e', // Rose 500
+      '#fb7185', // Rose 400
+      '#fda4af', // Rose 300
+      '#fda4af', // Light
+      '#e11d48', // Rose 600
+    ];
+
+    return {
+      totalLoss,
+      items: list.map((item, index) => ({
+        ...item,
+        color: colors[index % colors.length]
+      }))
+    };
+  }, [lossRecords]);
+
   // 5. ALERTAS DE INSUMOS E VALIDADE (CONTROLE OPERACIONAL)
   const operationalAlerts = useMemo(() => {
     const alerts: {
@@ -988,6 +1025,78 @@ export default function Dashboard({
 
           <div className="border-t border-slate-100 pt-3 mt-4 text-[10px] text-slate-400 italic">
             *Dica Confeitaria: Doces e bolos confeitados lideram faturamento de maior margem!
+          </div>
+        </div>
+
+        {/* Distribuição por Perdas (Donut Chart) */}
+        <div className="bg-white p-6 rounded-3xl border border-rose-100 shadow-sm flex flex-col justify-between" id="dashboard-loss-distribution-widget">
+          <div>
+            <h3 className="font-black text-slate-900 text-sm">Distribuição de Desperdício</h3>
+            <p className="text-xs text-slate-400">Itens com maior impacto no custo de perdas.</p>
+            
+            {/* Donut SVG Rendering */}
+            <div className="flex items-center justify-center h-48 mt-6 relative" id="svg-loss-donut-box">
+              {lossDistribution.items.length === 0 ? (
+                <div className="text-center py-6 text-slate-400">
+                  <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-slate-350" />
+                  <p className="text-xs">Nenhum desperdício registrado.</p>
+                </div>
+              ) : (
+                <div className="relative flex items-center justify-center">
+                  <svg width="150" height="150" viewBox="0 0 42 42" className="transform -rotate-90">
+                    <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#f1f5f9" strokeWidth="4" />
+                    {(() => {
+                      let accumulatedPercent = 0;
+                      return lossDistribution.items.map((item, index) => {
+                        const strokeDasharray = `${item.percentage} ${100 - item.percentage}`;
+                        const strokeDashoffset = 100 - accumulatedPercent;
+                        accumulatedPercent += item.percentage;
+
+                        return (
+                          <circle 
+                            key={index}
+                            cx="21" 
+                            cy="21" 
+                            r="15.915" 
+                            fill="transparent" 
+                            stroke={item.color} 
+                            strokeWidth="4.2" 
+                            strokeDasharray={strokeDasharray} 
+                            strokeDashoffset={strokeDashoffset}
+                          />
+                        );
+                      });
+                    })()}
+                  </svg>
+                  <div className="absolute flex flex-col items-center justify-center">
+                    <span className="text-[9px] uppercase font-bold text-slate-400">Prejuízo</span>
+                    <span className="text-sm font-black text-rose-800 font-mono">
+                      R$ {lossDistribution.totalLoss.toFixed(0)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Legend with interactive colors */}
+            <div className="space-y-2 mt-4">
+              {lossDistribution.items.slice(0, 4).map((item, index) => (
+                <div key={index} className="flex justify-between items-center text-xs">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }}></span>
+                    <span className="text-slate-600 truncate">{item.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2 font-mono">
+                    <span className="text-slate-400 font-medium text-[10px]">{item.percentage.toFixed(0)}%</span>
+                    <span className="font-bold text-rose-800">R$ {item.value.toFixed(0)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          <div className="border-t border-slate-100 pt-3 mt-4 text-[10px] text-rose-400 italic">
+            *Atenção: Itens em destaque na lista acima representam os maiores custos de desperdício no período.
           </div>
         </div>
 

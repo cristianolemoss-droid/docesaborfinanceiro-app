@@ -943,7 +943,7 @@ export default function Financeiro({
                         if (item) {
                           setSelectedLossItem(item);
                           setLossItemQty(1);
-                          const unitCost = item.custoUnitario || item.precoVenda || 0;
+                          const unitCost = item.custoUnitario || 0;
                           setFormTx(prev => ({
                             ...prev,
                             valor: unitCost.toFixed(2),
@@ -962,7 +962,7 @@ export default function Financeiro({
                     >
                       <option value="">-- Escolha o Item Descartado do PDV --</option>
                       {inventory.map(item => {
-                        const unitCost = item.custoUnitario || item.precoVenda || 0;
+                        const unitCost = item.custoUnitario || 0;
                         return (
                           <option key={item.id} value={item.id}>
                             {item.nome} ({item.tipo === 'ingrediente' ? 'Ingrediente' : 'Produto Final'} | Custo: R$ {unitCost.toFixed(2)})
