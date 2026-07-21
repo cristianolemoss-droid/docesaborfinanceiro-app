@@ -74,8 +74,21 @@ import {
   deleteProfileFromSupabase,
   getActiveTenantId,
   setActiveTenantId,
-  SUPABASE_SQL_SETUP_CODE 
+  SUPABASE_SQL_SETUP_CODE,
+  uploadMirrorToSupabase,
+  downloadMirrorFromSupabase
 } from './utils/supabaseDb';
+import {
+  getLocalInventory,
+  getLocalLossRecords,
+  getLocalSales,
+  getLocalTransactions,
+  saveLocalInventoryBulk,
+  saveLocalLossRecordsBulk,
+  saveLocalSalesBulk,
+  saveLocalTransactionsBulk,
+  clearLocalDbForTenant
+} from './utils/localDb';
 
 const INITIAL_COMPANY: CompanyConfig = {
   id: 'c_default',
@@ -189,6 +202,7 @@ export default function App() {
   const [isCopied, setIsCopied] = useState(false);
   const [syncStatusText, setSyncStatusText] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isMirrorSyncing, setIsMirrorSyncing] = useState(false);
   const [tempSupabaseUrl, setTempSupabaseUrl] = useState('');
   const [tempSupabaseAnonKey, setTempSupabaseAnonKey] = useState('');
   const [shareUrl, setShareUrl] = useState('https://ais-pre-4qykl3wqmdg5x2wpet7vud-585518200419.us-east1.run.app');
@@ -276,47 +290,91 @@ export default function App() {
         }
       }
 
-      // Re-load tenant-specific data (now that tenant ID is set from session)
-      const cachedInventory = localStorage.getItem(getTenantStorageKey('bakery_inventory'));
-      setInventory(cachedInventory ? JSON.parse(cachedInventory) : INITIAL_INVENTORY);
-      
-      const cachedLosses = localStorage.getItem(getTenantStorageKey('bakery_losses'));
-      setLossRecords(cachedLosses ? JSON.parse(cachedLosses) : INITIAL_LOSS_RECORDS);
-      
-      const cachedTransactions = localStorage.getItem(getTenantStorageKey('bakery_transactions'));
-      setTransactions(cachedTransactions ? JSON.parse(cachedTransactions) : INITIAL_TRANSACTIONS);
-      
-      const cachedSales = localStorage.getItem(getTenantStorageKey('bakery_sales'));
-      setSales(cachedSales ? JSON.parse(cachedSales) : INITIAL_SALES);
-      
+      const activeTenantId = getActiveTenantId();
+
+      // Load data from IndexedDB locally first for instant launch
+      try {
+        const [localInv, localLoss, localSal, localTx] = await Promise.all([
+          getLocalInventory(activeTenantId),
+          getLocalLossRecords(activeTenantId),
+          getLocalSales(activeTenantId),
+          getLocalTransactions(activeTenantId)
+        ]);
+
+        setInventory(localInv);
+        setLossRecords(localLoss);
+        setSales(localSal);
+        setTransactions(localTx);
+      } catch (err) {
+        console.error('[IndexedDB] Erro ao carregar dados locais no boot:', err);
+        // LocalStorage legacy fallback
+        const cachedInventory = localStorage.getItem(getTenantStorageKey('bakery_inventory'));
+        setInventory(cachedInventory ? JSON.parse(cachedInventory) : INITIAL_INVENTORY);
+        const cachedLosses = localStorage.getItem(getTenantStorageKey('bakery_losses'));
+        setLossRecords(cachedLosses ? JSON.parse(cachedLosses) : INITIAL_LOSS_RECORDS);
+        const cachedTransactions = localStorage.getItem(getTenantStorageKey('bakery_transactions'));
+        setTransactions(cachedTransactions ? JSON.parse(cachedTransactions) : INITIAL_TRANSACTIONS);
+        const cachedSales = localStorage.getItem(getTenantStorageKey('bakery_sales'));
+        setSales(cachedSales ? JSON.parse(cachedSales) : INITIAL_SALES);
+      }
+
       const cachedOrders = localStorage.getItem(getTenantStorageKey('bakery_open_orders'));
       setOpenOrders(cachedOrders ? JSON.parse(cachedOrders) : []);
 
+      // If Supabase is configured, fetch latest data asynchronously
       if (configured) {
-        setSupabaseLogs('Supabase detectado! Tentando carregar tabelas de nuvem...');
-        const res = await downloadAllFromSupabase();
-        if (res.success && res.inventory && res.lossRecords && res.sales && res.transactions) {
-          setInventory(res.inventory);
-          setLossRecords(res.lossRecords);
-          setTransactions(res.transactions);
-          setSales(res.sales);
-          setSupabaseConnected(true);
-          setSupabaseLogs('Conectado com sucesso! Dados carregados da nuvem Supabase em tempo real.');
-          
-          // Sync LocalStorage for offline speed and buffer redudancy
-          safeLocalStorageSetItem(getTenantStorageKey('bakery_inventory'), JSON.stringify(res.inventory));
-          localStorage.setItem(getTenantStorageKey('bakery_losses'), JSON.stringify(res.lossRecords));
-          localStorage.setItem(getTenantStorageKey('bakery_transactions'), JSON.stringify(res.transactions));
-          localStorage.setItem(getTenantStorageKey('bakery_sales'), JSON.stringify(res.sales));
-          setIsLoaded(true);
-          return;
-        } else {
-          setSupabaseConnected(false);
-          const errMsg = res.error || 'Erro de leitura nas tabelas';
-          setSupabaseLogs(`Supabase configurado, mas sem resposta: ${errMsg}. Rodou o script SQL de tabelas? Utilizando cache offline local por segurança!`);
+        setSupabaseLogs('Supabase detectado! Buscando espelho mais recente...');
+        try {
+          const res = await downloadMirrorFromSupabase();
+          if (res.success && res.inventory && res.lossRecords && res.sales && res.transactions) {
+            setInventory(res.inventory);
+            setLossRecords(res.lossRecords);
+            setTransactions(res.transactions);
+            setSales(res.sales);
+            setSupabaseConnected(true);
+            setSupabaseLogs('Conectado com sucesso! Dados sincronizados via espelho de alta performance.');
+            
+            // Update IndexedDB
+            await Promise.all([
+              saveLocalInventoryBulk(res.inventory, activeTenantId),
+              saveLocalLossRecordsBulk(res.lossRecords, activeTenantId),
+              saveLocalSalesBulk(res.sales, activeTenantId),
+              saveLocalTransactionsBulk(res.transactions, activeTenantId)
+            ]);
+          } else {
+            // Fallback to legacy individual tables load
+            console.warn('[boot] Espelho não encontrado, tentando tabelas individuais legadas...');
+            const legacyRes = await downloadAllFromSupabase();
+            if (legacyRes.success && legacyRes.inventory && legacyRes.lossRecords && legacyRes.sales && legacyRes.transactions) {
+              setInventory(legacyRes.inventory);
+              setLossRecords(legacyRes.lossRecords);
+              setTransactions(legacyRes.transactions);
+              setSales(legacyRes.sales);
+              setSupabaseConnected(true);
+              setSupabaseLogs('Conectado com sucesso via tabelas legadas. Migrando dados para o espelho...');
+              
+              // Sync IndexedDB
+              await Promise.all([
+                saveLocalInventoryBulk(legacyRes.inventory, activeTenantId),
+                saveLocalLossRecordsBulk(legacyRes.lossRecords, activeTenantId),
+                saveLocalSalesBulk(legacyRes.sales, activeTenantId),
+                saveLocalTransactionsBulk(legacyRes.transactions, activeTenantId)
+              ]);
+
+              // Upload mirror
+              await uploadMirrorToSupabase(legacyRes.inventory, legacyRes.lossRecords, legacyRes.sales, legacyRes.transactions);
+            } else {
+              setSupabaseConnected(false);
+              const errMsg = res.error || legacyRes.error || 'Erro de leitura nas tabelas';
+              setSupabaseLogs(`Supabase offline ou sem resposta: ${errMsg}. Rodando local-first com IndexedDB.`);
+            }
+          }
+        } catch (err: any) {
+          console.error('Erro de conexão ao carregar dados do Supabase:', err);
+          setSupabaseLogs(`Erro de sincronia Supabase: ${err.message}. Operando local-first via IndexedDB.`);
         }
       } else {
-        setSupabaseLogs('Modo Offline Ativo. Crie chaves de conexão no settings para sincronizar com Supabase!');
+        setSupabaseLogs('Modo Local-First Ativo. Configure as chaves do Supabase para espelhamento em nuvem.');
       }
 
       setIsLoaded(true);
@@ -325,74 +383,131 @@ export default function App() {
     loadInitialData();
   }, []);
 
-  // Sync to LocalStorage whenever state changes
+  // Sync memory state to local caches (IndexedDB and LocalStorage) whenever it changes
   useEffect(() => {
     if (!isLoaded) return;
+    const tenantId = getActiveTenantId();
+
+    // 1. Save to LocalStorage (legacy fallback cache)
     safeLocalStorageSetItem(getTenantStorageKey('bakery_inventory'), JSON.stringify(inventory));
     safeLocalStorageSetItem(getTenantStorageKey('bakery_losses'), JSON.stringify(lossRecords));
     safeLocalStorageSetItem(getTenantStorageKey('bakery_transactions'), JSON.stringify(transactions));
     safeLocalStorageSetItem(getTenantStorageKey('bakery_sales'), JSON.stringify(sales));
     
-    // Global data
     localStorage.setItem('bakery_companies', JSON.stringify(companies));
     localStorage.setItem('bakery_users', JSON.stringify(users));
-    
     safeLocalStorageSetItem(getTenantStorageKey('bakery_open_orders'), JSON.stringify(openOrders));
+
+    // 2. Save to Dexie IndexedDB (Local-First primary storage)
+    saveLocalInventoryBulk(inventory, tenantId).catch(err => console.error('[IndexedDB] Erro ao salvar inventário:', err));
+    saveLocalLossRecordsBulk(lossRecords, tenantId).catch(err => console.error('[IndexedDB] Erro ao salvar perdas:', err));
+    saveLocalSalesBulk(sales, tenantId).catch(err => console.error('[IndexedDB] Erro ao salvar vendas:', err));
+    saveLocalTransactionsBulk(transactions, tenantId).catch(err => console.error('[IndexedDB] Erro ao salvar transações:', err));
   }, [inventory, lossRecords, transactions, sales, companies, users, openOrders, isLoaded]);
+
+  // Background cloud mirror sync (debounced to avoid flooding Supabase egress)
+  useEffect(() => {
+    if (!isLoaded || !isSupabaseConfigured() || !supabaseConnected) return;
+
+    setIsMirrorSyncing(true);
+    const handler = setTimeout(async () => {
+      try {
+        const res = await uploadMirrorToSupabase(inventory, lossRecords, sales, transactions);
+        if (res.success) {
+          setSupabaseLogs('Espelho em nuvem sincronizado com sucesso! (Tráfego de egress otimizado)');
+        } else {
+          console.warn('[Mirror Sync] Falha ao sincronizar espelho:', res.error);
+          setSupabaseLogs(`Falha na sincronização em segundo plano: ${res.error}`);
+        }
+      } catch (err: any) {
+        console.error('[Mirror Sync] Erro:', err);
+      } finally {
+        setIsMirrorSyncing(false);
+      }
+    }, 4000); // Debounce of 4 seconds
+
+    return () => clearTimeout(handler);
+  }, [inventory, lossRecords, transactions, sales, isLoaded, supabaseConnected]);
 
   // Derived active company
   const activeCompany = companies.find(c => c.ativo) || INITIAL_COMPANY;
 
   // Refresh data for the active tenant dynamically
   const refreshDataForActiveTenant = async () => {
-    // 1. Try to load from Supabase if configured
-    if (isSupabaseConfigured()) {
-      setIsSyncing(true);
-      setSyncStatusText('Carregando dados do Cliente...');
-      try {
-        const res = await downloadAllFromSupabase();
+    const tenantId = getActiveTenantId();
+    setIsSyncing(true);
+    setSyncStatusText('Carregando dados do Cliente...');
+    
+    try {
+      // 1. Prime state from IndexedDB immediately for instant load
+      const [localInv, localLoss, localSal, localTx] = await Promise.all([
+        getLocalInventory(tenantId),
+        getLocalLossRecords(tenantId),
+        getLocalSales(tenantId),
+        getLocalTransactions(tenantId)
+      ]);
+
+      setInventory(localInv);
+      setLossRecords(localLoss);
+      setSales(localSal);
+      setTransactions(localTx);
+      setLoadedTenantId(tenantId);
+
+      // 2. Try to pull fresh mirror from Supabase if configured
+      if (isSupabaseConfigured()) {
+        setSupabaseLogs('Buscando espelho mais recente do Supabase...');
+        const res = await downloadMirrorFromSupabase();
+        
         if (res.success && res.inventory && res.lossRecords && res.sales && res.transactions) {
           setInventory(res.inventory);
           setLossRecords(res.lossRecords);
           setTransactions(res.transactions);
           setSales(res.sales);
           setSupabaseConnected(true);
-          setSupabaseLogs(`Conectado! Dados carregados para o Cliente [${getActiveTenantId()}] em tempo real.`);
+          setSupabaseLogs(`Sincronizado! Dados carregados do espelho do Cliente [${tenantId}] com sucesso.`);
           
-          // Save to cache
-          localStorage.setItem(getTenantStorageKey('bakery_inventory'), JSON.stringify(res.inventory));
-          localStorage.setItem(getTenantStorageKey('bakery_losses'), JSON.stringify(res.lossRecords));
-          localStorage.setItem(getTenantStorageKey('bakery_transactions'), JSON.stringify(res.transactions));
-          localStorage.setItem(getTenantStorageKey('bakery_sales'), JSON.stringify(res.sales));
+          // Overwrite local IndexedDB with the latest downloaded cloud mirror
+          await Promise.all([
+            saveLocalInventoryBulk(res.inventory, tenantId),
+            saveLocalLossRecordsBulk(res.lossRecords, tenantId),
+            saveLocalSalesBulk(res.sales, tenantId),
+            saveLocalTransactionsBulk(res.transactions, tenantId)
+          ]);
         } else {
-          console.error('Falha ao baixar dados do inquilino:', res.error);
-          setSupabaseLogs(`Erro ao carregar dados do Cliente: ${res.error}`);
+          // Fallback to legacy individual tables download
+          console.warn('[refresh] Espelho não encontrado ou falhou, tentando tabelas individuais...');
+          const legacyRes = await downloadAllFromSupabase();
+          if (legacyRes.success && legacyRes.inventory && legacyRes.lossRecords && legacyRes.sales && legacyRes.transactions) {
+            setInventory(legacyRes.inventory);
+            setLossRecords(legacyRes.lossRecords);
+            setTransactions(legacyRes.transactions);
+            setSales(legacyRes.sales);
+            setSupabaseConnected(true);
+            setSupabaseLogs(`Conectado via tabelas legadas! Migrando dados para o formato espelho.`);
+            
+            // Sync IndexedDB
+            await Promise.all([
+              saveLocalInventoryBulk(legacyRes.inventory, tenantId),
+              saveLocalLossRecordsBulk(legacyRes.lossRecords, tenantId),
+              saveLocalSalesBulk(legacyRes.sales, tenantId),
+              saveLocalTransactionsBulk(legacyRes.transactions, tenantId)
+            ]);
+            
+            // Save the mirror to Supabase for the first time
+            await uploadMirrorToSupabase(legacyRes.inventory, legacyRes.lossRecords, legacyRes.sales, legacyRes.transactions);
+          } else {
+            console.error('Falha ao baixar dados do inquilino:', res.error || legacyRes.error);
+            setSupabaseLogs(`Utilizando cache local. Erro ao ler nuvem: ${res.error || legacyRes.error}`);
+          }
         }
-      } catch (e: any) {
-        console.error(e);
-        setSupabaseLogs(`Erro crítico de sincronia: ${e.message}`);
-      } finally {
-        setIsSyncing(false);
-        setSyncStatusText(null);
       }
+    } catch (e: any) {
+      console.error(e);
+      setSupabaseLogs(`Erro crítico de sincronia: ${e.message}`);
+    } finally {
+      setIsSyncing(false);
+      setSyncStatusText(null);
     }
-
-    // 2. Load from LocalStorage (as fallback or primary in offline mode)
-    const cachedInventory = localStorage.getItem(getTenantStorageKey('bakery_inventory'));
-    setInventory(cachedInventory ? JSON.parse(cachedInventory) : INITIAL_INVENTORY);
-    
-    const cachedLosses = localStorage.getItem(getTenantStorageKey('bakery_losses'));
-    setLossRecords(cachedLosses ? JSON.parse(cachedLosses) : INITIAL_LOSS_RECORDS);
-    
-    const cachedTransactions = localStorage.getItem(getTenantStorageKey('bakery_transactions'));
-    setTransactions(cachedTransactions ? JSON.parse(cachedTransactions) : INITIAL_TRANSACTIONS);
-    
-    const cachedSales = localStorage.getItem(getTenantStorageKey('bakery_sales'));
-    setSales(cachedSales ? JSON.parse(cachedSales) : INITIAL_SALES);
-    
-    const cachedOrders = localStorage.getItem(getTenantStorageKey('bakery_open_orders'));
-    setOpenOrders(cachedOrders ? JSON.parse(cachedOrders) : []);
-    setLoadedTenantId(getActiveTenantId());
   };
 
   // Handle login success and persist session
@@ -535,13 +650,7 @@ export default function App() {
   // CALLBACK: Venda finalizada no PDV
   const handleCompleteSale = (completedSale: Sale, updatedInventory: InventoryItem[]) => {
     // 1. Adicionar à lista de vendas
-    setSales(prev => {
-      const updatedArr = [...prev, completedSale];
-      if (isSupabaseConfigured() && supabaseConnected) {
-        syncSingleSale(completedSale).catch(err => console.error(err));
-      }
-      return updatedArr;
-    });
+    setSales(prev => [...prev, completedSale]);
 
     // 2. Atualizar inventário
     handleUpdateInventory(updatedInventory);
@@ -561,13 +670,7 @@ export default function App() {
       origemId: completedSale.id
     };
 
-    setTransactions(prev => {
-      const updatedArr = [...prev, financeTx];
-      if (isSupabaseConfigured() && supabaseConnected) {
-        syncSingleTransaction(financeTx).catch(err => console.error(err));
-      }
-      return updatedArr;
-    });
+    setTransactions(prev => [...prev, financeTx]);
   };
 
   // CALLBACK: Cancelar/Excluir uma venda no PDV com recarga automática de estoque
@@ -605,42 +708,17 @@ export default function App() {
 
     // 4. Remover transações correspondentes do livro caixa local
     setTransactions(prev => prev.filter(t => t.id !== 't_sale_' + saleId && t.origemId !== saleId));
-
-    // 5. Sincronizar exclusão com Supabase se estiver conectado
-    if (isSupabaseConfigured() && supabaseConnected) {
-      deleteSingleSale(saleId).catch(err => console.error('Erro ao deletar venda no Supabase:', err));
-      deleteTransactionsByOrigin(saleId).catch(err => console.error('Erro ao deletar transações no Supabase:', err));
-    }
   };
 
   // CALLBACK: Descarte / Perda de Perecível registrada no Estoque
   const handleAddLossRecord = (newLoss: LossRecord, expenseTransaction: Transaction) => {
-    setLossRecords(prev => {
-      const updatedArr = [...prev, newLoss];
-      if (isSupabaseConfigured() && supabaseConnected) {
-        syncSingleLoss(newLoss).catch(err => console.error(err));
-      }
-      return updatedArr;
-    });
-
-    setTransactions(prev => {
-      const updatedArr = [...prev, expenseTransaction];
-      if (isSupabaseConfigured() && supabaseConnected) {
-        syncSingleTransaction(expenseTransaction).catch(err => console.error(err));
-      }
-      return updatedArr;
-    });
+    setLossRecords(prev => [...prev, newLoss]);
+    setTransactions(prev => [...prev, expenseTransaction]);
   };
 
   // CALLBACK: Adição manual de receita/despesa operacionale
   const handleAddTransactionManual = (newTx: Transaction) => {
-    setTransactions(prev => {
-      const updatedArr = [...prev, newTx];
-      if (isSupabaseConfigured() && supabaseConnected) {
-        syncSingleTransaction(newTx).catch(err => console.error(err));
-      }
-      return updatedArr;
-    });
+    setTransactions(prev => [...prev, newTx]);
   };
 
   const handleDeleteTransaction = (id: string) => {
@@ -653,9 +731,6 @@ export default function App() {
     }
 
     setTransactions(prev => prev.filter(t => t.id !== id));
-    if (isSupabaseConfigured() && supabaseConnected) {
-      deleteSingleTransaction(id).catch(err => console.error(err));
-    }
   };
 
   if (!isLoaded) {
@@ -781,14 +856,14 @@ export default function App() {
               }}
               className={`text-xs font-bold py-1.5 px-3.5 rounded-xl flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer pointer-events-auto ${
                 supabaseConnected 
-                  ? 'bg-emerald-50 border-emerald-300 hover:bg-emerald-100/70 text-emerald-800' 
-                  : (isSupabaseConfigured() ? 'bg-amber-50 border-amber-250 text-amber-800 hover:bg-amber-100' : 'bg-rose-50/40 hover:bg-rose-50 border border-rose-100 hover:border-rose-200 text-slate-600 hover:text-rose-750')
+                  ? (isMirrorSyncing ? 'bg-blue-50 border border-blue-300 text-blue-800 hover:bg-blue-100/70' : 'bg-emerald-50 border border-emerald-300 hover:bg-emerald-100/70 text-emerald-800')
+                  : (isSupabaseConfigured() ? 'bg-amber-50 border border-amber-250 text-amber-800 hover:bg-amber-100' : 'bg-rose-50/40 hover:bg-rose-50 border border-rose-100 hover:border-rose-200 text-slate-600 hover:text-rose-750')
               }`}
               title="Sincronização e Conexão Supabase"
             >
-              <Database className={`w-3.5 h-3.5 ${supabaseConnected ? 'text-emerald-600 animate-pulse' : 'text-rose-450'}`} />
+              <Database className={`w-3.5 h-3.5 ${isMirrorSyncing ? 'text-blue-500 animate-spin' : (supabaseConnected ? 'text-emerald-600 animate-pulse' : 'text-rose-450')}`} />
               <span className="hidden leading-none lg:inline">
-                {supabaseConnected ? 'Supabase Conectado' : 'Supabase (Nuvem)'}
+                {isMirrorSyncing ? 'Sincronizando espelho...' : (supabaseConnected ? 'Supabase Conectado' : 'Supabase (Nuvem)')}
               </span>
             </button>
             
@@ -1202,22 +1277,53 @@ export default function App() {
                         alert("⚠️ Configure as chaves de ambiente primeiro!");
                         return;
                       }
-                      if (window.confirm("Atenção! Isso substituirá seus dados locais atuais com a última versão salva nas tabelas do Supabase. Deseja continuar?")) {
+                      if (window.confirm("Atenção! Isso substituirá seus dados locais atuais com a última versão salva no espelho do Supabase. Deseja continuar?")) {
                         setIsSyncing(true);
-                        setSyncStatusText("Baixando dados...");
-                        const res = await downloadAllFromSupabase();
+                        setSyncStatusText("Baixando espelho...");
+                        
+                        let res = await downloadMirrorFromSupabase();
+                        let usedLegacy = false;
+                        
+                        if (!res.success) {
+                          setSyncStatusText("Buscando tabelas individuais (fallback)...");
+                          const legacyRes = await downloadAllFromSupabase();
+                          if (legacyRes.success) {
+                            res = legacyRes;
+                            usedLegacy = true;
+                          }
+                        }
+
                         setIsSyncing(false);
                         setSyncStatusText(null);
+                        
                         if (res.success && res.inventory && res.lossRecords && res.sales && res.transactions) {
+                          const activeTenantId = getActiveTenantId();
                           setInventory(res.inventory);
                           setLossRecords(res.lossRecords);
                           setSales(res.sales);
                           setTransactions(res.transactions);
                           setSupabaseConnected(true);
-                          setSupabaseLogs("Conectado e sincronizado com sucesso! Todos os dados cloud foram carregados.");
+                          setSupabaseLogs(usedLegacy 
+                            ? "Conectado e migrado com sucesso via tabelas legadas." 
+                            : "Conectado e sincronizado com sucesso via Espelho."
+                          );
+                          
+                          // Overwrite IndexedDB
+                          await Promise.all([
+                            saveLocalInventoryBulk(res.inventory, activeTenantId),
+                            saveLocalLossRecordsBulk(res.lossRecords, activeTenantId),
+                            saveLocalSalesBulk(res.sales, activeTenantId),
+                            saveLocalTransactionsBulk(res.transactions, activeTenantId)
+                          ]);
+
+                          if (usedLegacy) {
+                            // Automatically upload as mirror for subsequent lightning-fast reads
+                            await uploadMirrorToSupabase(res.inventory, res.lossRecords, res.sales, res.transactions);
+                          }
+
                           alert("🎉 Dados baixados do Supabase com sucesso!");
                         } else {
-                          alert(`❌ Falha ao baixar: ${res.error || "Tabelas não criadas no Supabase."}`);
+                          alert(`❌ Falha ao baixar: ${res.error || "Tabelas ou espelho não configurados no Supabase."}`);
                         }
                       }
                     }}
@@ -1234,16 +1340,16 @@ export default function App() {
                         alert("⚠️ Configure as chaves de ambiente primeiro!");
                         return;
                       }
-                      if (window.confirm("Isso atualizará/mesclará suas tabelas do Supabase com os dados locais atuais. Deseja continuar?")) {
+                      if (window.confirm("Isso atualizará seu espelho em nuvem no Supabase com os dados locais atuais. Deseja continuar?")) {
                         setIsSyncing(true);
-                        setSyncStatusText("Enviando dados...");
-                        const res = await uploadAllToSupabase(inventory, lossRecords, sales, transactions);
+                        setSyncStatusText("Enviando espelho...");
+                        const res = await uploadMirrorToSupabase(inventory, lossRecords, sales, transactions);
                         setIsSyncing(false);
                         setSyncStatusText(null);
                         if (res.success) {
                           setSupabaseConnected(true);
-                          setSupabaseLogs("Dados locais sincronizados e enviados para o cluster do Supabase.");
-                          alert("⬆️ Dados enviados para o Supabase com sucesso total!");
+                          setSupabaseLogs("Dados locais sincronizados e enviados em formato de espelho consolidado.");
+                          alert("⬆️ Espelho de dados enviado para o Supabase com tráfego zero de egress!");
                         } else {
                           alert(`❌ Falha ao enviar: ${res.error}`);
                         }

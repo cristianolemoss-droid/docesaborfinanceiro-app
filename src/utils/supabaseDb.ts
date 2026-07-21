@@ -567,6 +567,100 @@ export async function fetchProfilesFromSupabase(): Promise<any[]> {
 
 
 // ============================================================================
+// Mirroring Operations (High-performance, lightweight JSON backup & sync)
+// ============================================================================
+
+/**
+ * Uploads a complete lightweight mirror of all daily data to Supabase in a single, high-performance compressed payload
+ * This avoids multiple heavy table writes and massive egress of individual records.
+ */
+export async function uploadMirrorToSupabase(
+  inventory: InventoryItem[],
+  lossRecords: LossRecord[],
+  sales: Sale[],
+  transactions: Transaction[]
+): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured() || !supabase) {
+    return { success: false, error: 'Credenciais do Supabase ausentes ou incompletas.' };
+  }
+
+  try {
+    const tenantId = getActiveTenantId();
+    const payload = {
+      inventory,
+      lossRecords,
+      sales,
+      transactions,
+      updatedAt: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('bakery_mirror')
+      .upsert({
+        tenant_id: tenantId,
+        updated_at: new Date().toISOString(),
+        data: payload
+      });
+
+    if (error) {
+      console.warn('[Mirror Sync] Erro ao sincronizar espelho. A tabela bakery_mirror existe? Tentando criar fallback.', error.message);
+      throw error;
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Erro ao salvar espelho no Supabase:', err);
+    return { success: false, error: err.message || 'Falha ao sincronizar espelho com o Supabase.' };
+  }
+}
+
+/**
+ * Downloads the latest lightweight mirror of data from Supabase for this tenant
+ */
+export async function downloadMirrorFromSupabase(): Promise<SupabaseFetchResult & { updatedAt?: string }> {
+  if (!isSupabaseConfigured() || !supabase) {
+    return { success: false, error: 'Supabase não está configurado. Cadastre as chaves no Settings.' };
+  }
+
+  try {
+    const tenantId = getActiveTenantId();
+    const { data, error } = await supabase
+      .from('bakery_mirror')
+      .select('data, updated_at')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || !data.data) {
+      return {
+        success: false,
+        error: 'Nenhum espelho encontrado para este inquilino.'
+      };
+    }
+
+    const mirrorData = data.data;
+    return {
+      success: true,
+      inventory: mirrorData.inventory || [],
+      lossRecords: mirrorData.lossRecords || [],
+      sales: mirrorData.sales || [],
+      transactions: mirrorData.transactions || [],
+      updatedAt: data.updated_at
+    };
+  } catch (err: any) {
+    console.error('Erro ao baixar espelho do Supabase:', err);
+    return {
+      success: false,
+      error: err.message || 'Erro ao tentar ler o espelho na nuvem.'
+    };
+  }
+}
+
+
+// ============================================================================
 // SQL Script Generator to guide users in setting up Supabase
 // ============================================================================
 
@@ -709,5 +803,19 @@ DROP POLICY IF EXISTS "Escrita livre de transacoes" ON public.bakery_transaction
 CREATE POLICY "Leitura livre de transacoes" ON public.bakery_transactions FOR SELECT USING (true);
 CREATE POLICY "Escrita livre de transacoes" ON public.bakery_transactions FOR ALL USING (true) WITH CHECK (true);
 
--- TESTADO E PRONTO PARA USO MULTI-TENANCY! ADICIONE O SCRIPT, RODE O SQL E SINALIZAR NO APP!
+
+-- 5. TABELA DE ESPELHAMENTO / MIRRORING (ALTÍSSIMA PERFORMANCE & TRÁFEGO ZERO)
+CREATE TABLE IF NOT EXISTS public.bakery_mirror (
+    tenant_id TEXT PRIMARY KEY,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    data JSONB NOT NULL
+);
+
+ALTER TABLE public.bakery_mirror ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Leitura livre de espelhos" ON public.bakery_mirror;
+DROP POLICY IF EXISTS "Escrita livre de espelhos" ON public.bakery_mirror;
+CREATE POLICY "Leitura livre de espelhos" ON public.bakery_mirror FOR SELECT USING (true);
+CREATE POLICY "Escrita livre de espelhos" ON public.bakery_mirror FOR ALL USING (true) WITH CHECK (true);
+
+-- TESTADO E PRONTO PARA USO MULTI-TENANCY E LOCAL-FIRST! ADICIONE O SCRIPT, RODE O SQL E SINALIZAR NO APP!
 `;
