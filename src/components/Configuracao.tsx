@@ -57,7 +57,8 @@ export default function Configuracao({
   const [configSection, setConfigSection] = useState<'empresa' | 'usuarios' | 'desenvolvedor'>('empresa');
 
   // Form states - Desenvolvedor
-  const [newDevPass, setNewDevPass] = useState(devPassword);
+  // Não pré-preencher a senha de desenvolvedor no formulário por segurança (sem dicas)
+  const [newDevPass, setNewDevPass] = useState('');
   const [devPassSuccessMsg, setDevPassSuccessMsg] = useState<string | null>(null);
 
   // Form states - Empresa
