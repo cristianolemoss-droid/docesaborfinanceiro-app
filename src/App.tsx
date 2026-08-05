@@ -852,7 +852,8 @@ export default function App() {
             <button 
               id="btn-header-supabase-sync"
               onClick={() => {
-                setShowSupabaseModal(true);
+                // Protege acesso ao modal de Supabase com senha de desenvolvedor
+                setShowPasswordModal(true);
               }}
               className={`text-xs font-bold py-1.5 px-3.5 rounded-xl flex items-center gap-1.5 transition-all shadow-3xs cursor-pointer pointer-events-auto ${
                 supabaseConnected 
